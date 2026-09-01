@@ -1,0 +1,15 @@
+mobile_app/.dart_tool/
+mobile_app/build/
+mobile_app/.flutter-plugins*
+backend/venv/
+backend/__pycache__/
+backend/.env
+ml_pipeline/data/*.csv
+ml_pipeline/models/*.pkl
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.env
+.DS_Store
+*.log
+.env
+.vscode/
