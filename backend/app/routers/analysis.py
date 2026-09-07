@@ -1,20 +1,14 @@
 """
 app/routers/analysis.py
 ------------------------
-FastAPI router for Smriti AI Analysis, Caregiver Support & 5-Language Voice Engine.
+FastAPI router for Smriti AI Analysis, Caregiver Support, 5-Language Voice Engine & Bluetooth Speaker Guidance.
 
-Languages Supported:
-  - English (en)
-  - Hindi (hi)
-  - Assamese (as)
-  - Mizo (mzo)
-  - Khasi (kha)
-
-Exposes:
-  POST /analysis/cps                 -> calculate + store a CPS score
-  GET  /analysis/trend/{patient}      -> return score history + caregiver alert flag
-  POST /analysis/voice-intent        -> 5-language AI voice intent parsing & TTS response generator
-  GET  /analysis/voice-guidance/{screen_id} -> step-by-step spoken guidance per screen (en, hi, as, mzo, kha)
+Features:
+  - Duolingo-style 5-Language Catalog (en, hi, as, mzo, kha)
+  - On-Demand Translation Service
+  - Bluetooth Speaker & Hearing Aid Audio Guidance for Elderly Patients
+  - Step-by-Step Screen Guidance per screen
+  - CPS Scoring & Caregiver Progress History
 """
 
 from fastapi import APIRouter, HTTPException, Query
@@ -25,7 +19,13 @@ from datetime import datetime
 from backend.app.services.cps_calculator import SessionMetrics, calculate_cps
 from backend.app.services.anomaly_detector import check_trend
 from backend.app.services.store import FAKE_DB
-from backend.app.services.voice_assistant import process_voice_query, get_screen_voice_guidance
+from backend.app.services.voice_assistant import (
+    process_voice_query,
+    get_screen_voice_guidance,
+    get_supported_languages,
+    get_bluetooth_audio_guidance,
+    translate_text,
+)
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -76,6 +76,37 @@ class VoiceGuidanceResponse(BaseModel):
     language: str
     spoken_guidance: str
     next_step_instruction: str
+
+
+class TranslationRequest(BaseModel):
+    text: str = Field(..., description="Text or guidance phrase to translate")
+    source_lang: str = Field("en", description="Source language code")
+    target_lang: str = Field("hi", description="Target language code: en, hi, as, mzo, kha")
+
+
+class TranslationResponse(BaseModel):
+    source_lang: str
+    target_lang: str
+    original_text: str
+    translated_text: str
+
+
+@router.get("/languages")
+def get_language_catalog():
+    """Returns Duolingo-style 5-language selection catalog (en, hi, as, mzo, kha)."""
+    return get_supported_languages()
+
+
+@router.get("/bluetooth-guidance")
+def get_bluetooth_pairing_guidance(lang: str = Query("en", description="Language code: en, hi, as, mzo, kha")):
+    """Returns spoken notification prompt when Bluetooth speaker, hearing aid, phone, or PC is paired."""
+    return get_bluetooth_audio_guidance(lang=lang)
+
+
+@router.post("/translate", response_model=TranslationResponse)
+def translate_guidance(payload: TranslationRequest):
+    """Translates text or guidance phrase on-demand between any of the 5 supported languages."""
+    return translate_text(payload.text, payload.source_lang, payload.target_lang)
 
 
 @router.post("/cps", response_model=CPSResponse)

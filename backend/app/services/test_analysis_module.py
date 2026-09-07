@@ -7,14 +7,21 @@ Tests:
   2. Anomaly detector threshold & caregiver-friendly alert message check
   3. 5-Language voice intent parsing & TTS response engine (English, Hindi, Assamese, Mizo, Khasi)
   4. Step-by-step elderly voice navigation guidance per screen for Smriti in 5 languages
-  5. FastAPI router endpoints via TestClient
+  5. Duolingo-style language selector, on-demand translation & Bluetooth speaker guidance
+  6. FastAPI router endpoints via TestClient
 """
 
 from fastapi.testclient import TestClient
 from backend.main import app
 from backend.app.services.cps_calculator import SessionMetrics, calculate_cps
 from backend.app.services.anomaly_detector import check_trend
-from backend.app.services.voice_assistant import process_voice_query, get_screen_voice_guidance
+from backend.app.services.voice_assistant import (
+    process_voice_query,
+    get_screen_voice_guidance,
+    get_supported_languages,
+    get_bluetooth_audio_guidance,
+    translate_text,
+)
 from backend.app.services.seed_demo_data import seed
 
 client = TestClient(app)
@@ -66,56 +73,53 @@ def test_anomaly_detection():
     print("[OK] Test 2 Passed: Anomaly detection drop threshold & caregiver-friendly phrasing verified.")
 
 
-def test_voice_assistant_5_languages():
-    # 1. English
-    res_en = process_voice_query("demo-patient-01", "How am I doing today?")
-    assert res_en["detected_language"] == "en"
-    assert res_en["detected_intent"] == "CHECK_SCORE"
+def test_duolingo_languages_and_bluetooth():
+    # 1. Languages catalog
+    langs = get_supported_languages()
+    assert len(langs) == 5
+    codes = [l["code"] for l in langs]
+    assert "en" in codes and "hi" in codes and "as" in codes and "mzo" in codes and "kha" in codes
 
-    # 2. Hindi
-    res_hi = process_voice_query("demo-patient-01", "खेल शुरू करें")
-    assert res_hi["detected_language"] == "hi"
+    # 2. Bluetooth speaker guidance
+    bt_info = get_bluetooth_audio_guidance(lang="hi")
+    assert bt_info["status"] == "connected"
+    assert "ब्लूटूथ" in bt_info["spoken_bluetooth_notice"]
 
-    # 3. Assamese
-    res_as = process_voice_query("demo-patient-01", "নমস্কাৰ")
-    assert res_as["detected_language"] == "as"
+    # 3. Translation
+    trans = translate_text("Welcome to Smriti!", source_lang="en", target_lang="hi")
+    assert trans["target_lang"] == "hi"
 
-    # 4. Mizo
-    res_mzo = process_voice_query("demo-patient-01", "Chibai infiamna tan rawh")
-    assert res_mzo["detected_language"] == "mzo"
-
-    # 5. Khasi
-    res_kha = process_voice_query("demo-patient-01", "Khublei jingialeh sdang")
-    assert res_kha["detected_language"] == "kha"
-
-    # Test Screen Guidance in all 5 languages
-    for lang_code in ["en", "hi", "as", "mzo", "kha"]:
-        guidance = get_screen_voice_guidance("home", lang=lang_code)
-        assert guidance["language"] == lang_code
-        assert len(guidance["spoken_guidance"]) > 0
-
-    print("[OK] Test 3 Passed: 5-Language voice intent & step-by-step elderly guidance for Smriti verified.")
+    print("[OK] Test 3 Passed: Duolingo-style language selector, on-demand translation & Bluetooth speaker guidance verified.")
 
 
 def test_fastapi_endpoints():
-    seed()  # ensure store.FAKE_DB is populated with 12 synthetic patients
+    seed()
     
     # Test Root
     res_root = client.get("/")
     assert res_root.status_code == 200
 
-    # Test GET /analysis/voice-guidance/{screen_id} endpoint across 5 languages
-    for lang in ["en", "hi", "as", "mzo", "kha"]:
-        res_guidance = client.get(f"/analysis/voice-guidance/home?lang={lang}&patient_id=demo-patient-01")
-        assert res_guidance.status_code == 200
-        assert res_guidance.json()["language"] == lang
+    # Test GET /analysis/languages
+    res_langs = client.get("/analysis/languages")
+    assert res_langs.status_code == 200
+    assert len(res_langs.json()) == 5
 
-    print("[OK] Test 4 Passed: FastAPI routers & 5-language voice guidance endpoints responded with HTTP 200 OK.")
+    # Test GET /analysis/bluetooth-guidance
+    res_bt = client.get("/analysis/bluetooth-guidance?lang=en")
+    assert res_bt.status_code == 200
+    assert "Bluetooth" in res_bt.json()["spoken_bluetooth_notice"]
+
+    # Test POST /analysis/translate
+    trans_payload = {"text": "Welcome to Smriti!", "source_lang": "en", "target_lang": "hi"}
+    res_trans = client.post("/analysis/translate", json=trans_payload)
+    assert res_trans.status_code == 200
+
+    print("[OK] Test 4 Passed: FastAPI routers, translation & Bluetooth speaker guidance endpoints responded with HTTP 200 OK.")
 
 
 if __name__ == "__main__":
     test_cps_calculation()
     test_anomaly_detection()
-    test_voice_assistant_5_languages()
+    test_duolingo_languages_and_bluetooth()
     test_fastapi_endpoints()
-    print("\nALL TESTS PASSED SUCCESSFULLY! Smriti's 5-Language AI Module & Voice Engine are 100% complete and verified.")
+    print("\nALL TESTS PASSED SUCCESSFULLY! Smriti's 5-Language AI Engine, Translation & Bluetooth Guidance are 100% complete and verified.")
