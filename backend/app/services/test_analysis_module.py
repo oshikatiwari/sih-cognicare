@@ -1,12 +1,12 @@
 """
 test_analysis_module.py
 ------------------------
-Automated test suite for Oshika's AI Analysis Module & Voice Engine.
+Automated test suite for Oshika's AI Analysis Module & Voice Engine in Smriti (स्मृति).
 Tests:
   1. CPS calculator formula accuracy, difficulty tier mapping, supportive display labels & seconds auto-conversion
   2. Anomaly detector threshold & caregiver-friendly alert message check
   3. Multilingual voice intent parsing & TTS response engine (English & Hindi)
-  4. Step-by-step elderly voice navigation guidance per screen
+  4. Step-by-step elderly voice navigation guidance per screen for Smriti
   5. FastAPI router endpoints via TestClient
 """
 
@@ -79,14 +79,14 @@ def test_voice_assistant_engine():
     assert res_hi["detected_intent"] == "START_GAME"
     assert "गेम" in res_hi["response_text"] or "खेल" in res_hi["response_text"]
 
-    # Test Screen Guidance for elderly patients
+    # Test Screen Guidance for elderly patients in Smriti
     guidance_home = get_screen_voice_guidance("home", lang="en")
-    assert "CogniCare" in guidance_home["spoken_guidance"]
+    assert "Smriti" in guidance_home["spoken_guidance"]
     
     guidance_game = get_screen_voice_guidance("gameplay", lang="hi")
     assert "कार्ड्स" in guidance_game["spoken_guidance"] or "आराम" in guidance_game["spoken_guidance"]
 
-    print("[OK] Test 3 Passed: Multilingual voice intent & step-by-step elderly guidance verified.")
+    print("[OK] Test 3 Passed: Multilingual voice intent & step-by-step elderly guidance for Smriti verified.")
 
 
 def test_fastapi_endpoints():
@@ -95,6 +95,7 @@ def test_fastapi_endpoints():
     # Test Root
     res_root = client.get("/")
     assert res_root.status_code == 200
+    assert res_root.json()["app_name"] == "Smriti (स्मृति)"
 
     # Test Trend Endpoint for normal patient
     res_trend_01 = client.get("/analysis/trend/demo-patient-01")
@@ -123,9 +124,9 @@ def test_fastapi_endpoints():
     # Test GET /analysis/voice-guidance/{screen_id} endpoint
     res_guidance = client.get("/analysis/voice-guidance/home?lang=en&patient_id=demo-patient-01")
     assert res_guidance.status_code == 200
-    assert "spoken_guidance" in res_guidance.json()
+    assert "Smriti" in res_guidance.json()["spoken_guidance"]
 
-    print("[OK] Test 4 Passed: FastAPI routers & elderly voice guidance endpoints responded with HTTP 200 OK.")
+    print("[OK] Test 4 Passed: FastAPI routers & elderly voice guidance endpoints for Smriti responded with HTTP 200 OK.")
 
 
 if __name__ == "__main__":
@@ -133,4 +134,4 @@ if __name__ == "__main__":
     test_anomaly_detection()
     test_voice_assistant_engine()
     test_fastapi_endpoints()
-    print("\nALL TESTS PASSED SUCCESSFULLY! Oshika's AI Module & Voice Engine are 100% complete and verified.")
+    print("\nALL TESTS PASSED SUCCESSFULLY! Smriti's AI Module & Voice Engine are 100% complete and verified.")

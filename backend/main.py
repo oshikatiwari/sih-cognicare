@@ -1,7 +1,7 @@
 """
 main.py
 -------
-Standalone runnable entrypoint for the AI Analysis Module.
+Standalone runnable entrypoint for the AI Analysis & Voice Guidance Module of Smriti (स्मृति).
 Auto-seeds demo data on startup so /analysis/trend/{patient_id}
 returns real data immediately.
 
@@ -19,7 +19,7 @@ from backend.app.routers.analysis import router
 from backend.app.services.seed_demo_data import seed
 from backend.app.services.voice_assistant import process_voice_query
 
-app = FastAPI(title="Cognitive Care - AI Analysis Module")
+app = FastAPI(title="Smriti (स्मृति) — AI Cognitive Care & Memory Assistance Platform")
 
 # Enable CORS for Caregiver Dashboard & Mobile App clients
 app.add_middleware(
@@ -42,7 +42,7 @@ class VoiceQueryRequest(BaseModel):
 def voice_intent_alias(payload: VoiceQueryRequest):
     """
     Direct alias endpoint matching the roadmap spec for Mrunaala's Flutter Voice Module
-    (lib/voice/stt_service.dart -> POST /voice/intent -> backend AI intent parser).
+    (lib/voice/stt_service.dart -> POST /voice/intent -> Smriti backend AI intent parser).
     """
     return process_voice_query(payload.patient_id, payload.spoken_phrase)
 
@@ -50,18 +50,20 @@ def voice_intent_alias(payload: VoiceQueryRequest):
 @app.on_event("startup")
 def startup_seed():
     seed(num_patients=12, sessions_per_patient=10)
-    print("Demo data seeded: demo-patient-01 through demo-patient-12")
+    print("Smriti Demo data seeded: demo-patient-01 through demo-patient-12")
     print("demo-patient-12 is rigged with a sharp late drop to demo the anomaly alert.")
 
 
 @app.get("/")
 def root():
     return {
+        "app_name": "Smriti (स्मृति)",
         "status": "ok",
         "try": [
             "GET /analysis/trend/demo-patient-01",
             "GET /analysis/trend/demo-patient-12  (shows the anomaly alert)",
             "POST /analysis/cps  (see /docs for body schema)",
             "POST /voice/intent  (Mrunaala's Flutter voice pipeline endpoint)",
+            "GET /analysis/voice-guidance/home?lang=hi",
         ],
     }
