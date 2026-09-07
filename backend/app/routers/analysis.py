@@ -1,10 +1,12 @@
 """
 app/routers/analysis.py
 ------------------------
-FastAPI router for CogniCare AI Analysis & Caregiver Support Module.
+FastAPI router for CogniCare AI Analysis, Caregiver Support & Multilingual Voice Engine.
 
-Provides intuitive endpoints for logging game engagement, computing supportive
-cognitive performance scores, and tracking long-term progress for family caregivers.
+Exposes:
+  POST /analysis/cps            -> calculate + store a CPS score
+  GET  /analysis/trend/{patient} -> return score history + caregiver alert flag
+  POST /analysis/voice-intent   -> multilingual AI voice intent parsing & TTS response generator
 """
 
 from fastapi import APIRouter, HTTPException
@@ -15,6 +17,7 @@ from datetime import datetime
 from backend.app.services.cps_calculator import SessionMetrics, calculate_cps
 from backend.app.services.anomaly_detector import check_trend
 from backend.app.services.store import FAKE_DB
+from backend.app.services.voice_assistant import process_voice_query
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -42,6 +45,20 @@ class CPSResponse(BaseModel):
 class TrendResponse(BaseModel):
     scores: List[dict] = Field(..., description="Chronological progress history")
     alert: Optional[str] = Field(None, description="Caregiver notification message if a gentle check-in is recommended")
+
+
+class VoiceQueryRequest(BaseModel):
+    patient_id: str = Field("demo-patient-01", description="Patient profile ID")
+    spoken_phrase: str = Field("How am I doing today?", description="Spoken text query in English or Hindi")
+
+
+class VoiceQueryResponse(BaseModel):
+    patient_id: str
+    input_phrase: str
+    detected_language: str
+    detected_intent: str
+    response_text: str
+    action: dict
 
 
 @router.post("/cps", response_model=CPSResponse)
@@ -84,7 +101,7 @@ def calculate_and_store_cps(payload: CPSRequest):
 @router.get("/trend/{patient_id}", response_model=TrendResponse)
 def get_trend(patient_id: str):
     """
-    Returns progress trend history for family caregivers and highlights when a extra
+    Returns progress trend history for family caregivers and highlights when extra
     support or a gentle check-in may be helpful.
     """
     history = FAKE_DB.get(patient_id, [])
@@ -99,3 +116,21 @@ def get_trend(patient_id: str):
     alert_message = anomaly["message"] if anomaly else None
 
     return TrendResponse(scores=scores, alert=alert_message)
+
+
+@router.post("/voice-intent", response_model=VoiceQueryResponse)
+def process_voice_intent(payload: VoiceQueryRequest):
+    """
+    Processes spoken voice queries from elderly dementia patients in English or Hindi,
+    detects intent, fetches patient context (e.g. current CPS score), and returns
+    a warm TTS-ready response and UI navigation action.
+    """
+    result = process_voice_query(payload.patient_id, payload.spoken_phrase)
+    return VoiceQueryResponse(
+        patient_id=result["patient_id"],
+        input_phrase=result["input_phrase"],
+        detected_language=result["detected_language"],
+        detected_intent=result["detected_intent"],
+        response_text=result["response_text"],
+        action=result["action"],
+    )
