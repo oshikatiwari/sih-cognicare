@@ -40,14 +40,11 @@ class SessionMetrics:
     """
     Raw input for a single completed game session.
 
-    NOTE: field name `response_time` matches the roadmap's own API spec
-    (Section 8: POST /game-results body). Assumed to be in MILLISECONDS
-    per action/answer -- confirm this unit with Praveen once his game
-    code lands; if he's sending seconds, adjust `best`/`worst` defaults
-    below or multiply by 1000 before passing in.
+    Handles response times passed either in MILLISECONDS (e.g. 2500)
+    or in SECONDS (e.g. 2.5), auto-adapting to match Praveen's Flutter game payload.
     """
     accuracy: float              # 0-100, % correct
-    response_time: float         # ms per action/answer (assumed - confirm w/ Praveen)
+    response_time: float         # ms or seconds per action/answer
     completion_rate: float       # 0-100, % of session completed
     attempts: int
     errors: int
@@ -62,13 +59,18 @@ def _normalize_response_speed(response_time: float,
     """
     Converts raw response time into a 0-100 'speed score'.
     Faster (lower ms) = higher score. Clamped between best/worst
-    reference points (tune these two numbers during playtesting,
-    and confirm the unit assumption above with Praveen).
+    reference points.
+    
+    Auto-adapts if response_time is passed in seconds (< 60s) instead of ms.
     """
+    if response_time < 60.0:  # Auto-convert seconds to milliseconds
+        response_time = response_time * 1000.0
+
     if response_time <= best_ms:
         return 100.0
     if response_time >= worst_ms:
         return 0.0
+
     # linear interpolation between best and worst
     span = worst_ms - best_ms
     return round(100.0 * (worst_ms - response_time) / span, 2)
@@ -141,10 +143,9 @@ def map_to_difficulty(cps: float) -> str:
 
 
 if __name__ == "__main__":
-    # Quick manual test - run: python cps_calculator.py
     demo_session = SessionMetrics(
         accuracy=88,
-        response_time=2200,
+        response_time=2.2,  # seconds or ms
         completion_rate=100,
         attempts=12,
         errors=2,

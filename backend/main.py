@@ -20,10 +20,21 @@ Then open http://localhost:8000/docs, or try:
 """
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from backend.app.routers.analysis import router
 from backend.app.services.seed_demo_data import seed
 
 app = FastAPI(title="Cognitive Care - AI Analysis Module")
+
+# Enable CORS for Caregiver Dashboard & Mobile App clients
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(router)
 
 
