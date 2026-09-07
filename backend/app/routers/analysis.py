@@ -1,13 +1,20 @@
 """
 app/routers/analysis.py
 ------------------------
-FastAPI router for CogniCare AI Analysis, Caregiver Support & Elderly Voice Guidance Engine.
+FastAPI router for Smriti AI Analysis, Caregiver Support & 5-Language Voice Engine.
+
+Languages Supported:
+  - English (en)
+  - Hindi (hi)
+  - Assamese (as)
+  - Mizo (mzo)
+  - Khasi (kha)
 
 Exposes:
   POST /analysis/cps                 -> calculate + store a CPS score
   GET  /analysis/trend/{patient}      -> return score history + caregiver alert flag
-  POST /analysis/voice-intent        -> multilingual AI voice intent parsing & TTS response generator
-  GET  /analysis/voice-guidance/{screen_id} -> step-by-step spoken navigation guidance for elderly patients
+  POST /analysis/voice-intent        -> 5-language AI voice intent parsing & TTS response generator
+  GET  /analysis/voice-guidance/{screen_id} -> step-by-step spoken guidance per screen (en, hi, as, mzo, kha)
 """
 
 from fastapi import APIRouter, HTTPException, Query
@@ -50,7 +57,8 @@ class TrendResponse(BaseModel):
 
 class VoiceQueryRequest(BaseModel):
     patient_id: str = Field("demo-patient-01", description="Patient profile ID")
-    spoken_phrase: str = Field("How am I doing today?", description="Spoken text query in English or Hindi")
+    spoken_phrase: str = Field("How am I doing today?", description="Spoken text query in English, Hindi, Assamese, Mizo, or Khasi")
+    lang: Optional[str] = Field(None, description="Optional language override code: en, hi, as, mzo, kha")
 
 
 class VoiceQueryResponse(BaseModel):
@@ -130,11 +138,10 @@ def get_trend(patient_id: str):
 @router.post("/voice-intent", response_model=VoiceQueryResponse)
 def process_voice_intent(payload: VoiceQueryRequest):
     """
-    Processes spoken voice queries from elderly dementia patients in English or Hindi,
-    detects intent, fetches patient context (e.g. current CPS score), and returns
-    a warm TTS-ready response and UI navigation action.
+    Processes spoken voice queries from elderly dementia patients in English, Hindi, Assamese, Mizo, or Khasi.
+    Detects intent, fetches patient context (e.g. current CPS score), and returns a TTS-ready response.
     """
-    result = process_voice_query(payload.patient_id, payload.spoken_phrase)
+    result = process_voice_query(payload.patient_id, payload.spoken_phrase, forced_lang=payload.lang)
     return VoiceQueryResponse(
         patient_id=result["patient_id"],
         input_phrase=result["input_phrase"],
@@ -148,12 +155,12 @@ def process_voice_intent(payload: VoiceQueryRequest):
 @router.get("/voice-guidance/{screen_id}", response_model=VoiceGuidanceResponse)
 def get_voice_guidance_for_screen(
     screen_id: str,
-    lang: str = Query("en", description="Language code: en or hi"),
+    lang: str = Query("en", description="Language code: en, hi, as, mzo, kha"),
     patient_id: str = Query("demo-patient-01", description="Patient profile ID"),
 ):
     """
-    Provides step-by-step spoken navigation guidance in English or Hindi for elderly
-    dementia patients entering any screen (home, games_menu, gameplay, game_results, reminders).
+    Provides step-by-step spoken navigation guidance across 5 languages (English, Hindi, Assamese, Mizo, Khasi)
+    for elderly dementia patients entering any screen (home, games_menu, gameplay, game_results, reminders).
     """
     result = get_screen_voice_guidance(screen_id=screen_id, lang=lang, patient_id=patient_id)
     return VoiceGuidanceResponse(
