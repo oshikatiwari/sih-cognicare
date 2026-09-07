@@ -1,15 +1,16 @@
 """
 app/routers/analysis.py
 ------------------------
-FastAPI router for CogniCare AI Analysis, Caregiver Support & Multilingual Voice Engine.
+FastAPI router for CogniCare AI Analysis, Caregiver Support & Elderly Voice Guidance Engine.
 
 Exposes:
-  POST /analysis/cps            -> calculate + store a CPS score
-  GET  /analysis/trend/{patient} -> return score history + caregiver alert flag
-  POST /analysis/voice-intent   -> multilingual AI voice intent parsing & TTS response generator
+  POST /analysis/cps                 -> calculate + store a CPS score
+  GET  /analysis/trend/{patient}      -> return score history + caregiver alert flag
+  POST /analysis/voice-intent        -> multilingual AI voice intent parsing & TTS response generator
+  GET  /analysis/voice-guidance/{screen_id} -> step-by-step spoken navigation guidance for elderly patients
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
@@ -17,7 +18,7 @@ from datetime import datetime
 from backend.app.services.cps_calculator import SessionMetrics, calculate_cps
 from backend.app.services.anomaly_detector import check_trend
 from backend.app.services.store import FAKE_DB
-from backend.app.services.voice_assistant import process_voice_query
+from backend.app.services.voice_assistant import process_voice_query, get_screen_voice_guidance
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -59,6 +60,14 @@ class VoiceQueryResponse(BaseModel):
     detected_intent: str
     response_text: str
     action: dict
+
+
+class VoiceGuidanceResponse(BaseModel):
+    patient_id: str
+    screen_id: str
+    language: str
+    spoken_guidance: str
+    next_step_instruction: str
 
 
 @router.post("/cps", response_model=CPSResponse)
@@ -133,4 +142,24 @@ def process_voice_intent(payload: VoiceQueryRequest):
         detected_intent=result["detected_intent"],
         response_text=result["response_text"],
         action=result["action"],
+    )
+
+
+@router.get("/voice-guidance/{screen_id}", response_model=VoiceGuidanceResponse)
+def get_voice_guidance_for_screen(
+    screen_id: str,
+    lang: str = Query("en", description="Language code: en or hi"),
+    patient_id: str = Query("demo-patient-01", description="Patient profile ID"),
+):
+    """
+    Provides step-by-step spoken navigation guidance in English or Hindi for elderly
+    dementia patients entering any screen (home, games_menu, gameplay, game_results, reminders).
+    """
+    result = get_screen_voice_guidance(screen_id=screen_id, lang=lang, patient_id=patient_id)
+    return VoiceGuidanceResponse(
+        patient_id=result["patient_id"],
+        screen_id=result["screen_id"],
+        language=result["language"],
+        spoken_guidance=result["spoken_guidance"],
+        next_step_instruction=result["next_step_instruction"],
     )

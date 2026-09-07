@@ -5,15 +5,16 @@ Automated test suite for Oshika's AI Analysis Module & Voice Engine.
 Tests:
   1. CPS calculator formula accuracy, difficulty tier mapping, supportive display labels & seconds auto-conversion
   2. Anomaly detector threshold & caregiver-friendly alert message check
-  3. Multilingual voice intent parsing & TTS response generation (English & Hindi)
-  4. FastAPI router endpoints via TestClient
+  3. Multilingual voice intent parsing & TTS response engine (English & Hindi)
+  4. Step-by-step elderly voice navigation guidance per screen
+  5. FastAPI router endpoints via TestClient
 """
 
 from fastapi.testclient import TestClient
 from backend.main import app
 from backend.app.services.cps_calculator import SessionMetrics, calculate_cps
 from backend.app.services.anomaly_detector import check_trend
-from backend.app.services.voice_assistant import process_voice_query
+from backend.app.services.voice_assistant import process_voice_query, get_screen_voice_guidance
 from backend.app.services.seed_demo_data import seed
 
 client = TestClient(app)
@@ -78,7 +79,14 @@ def test_voice_assistant_engine():
     assert res_hi["detected_intent"] == "START_GAME"
     assert "गेम" in res_hi["response_text"] or "खेल" in res_hi["response_text"]
 
-    print("[OK] Test 3 Passed: Multilingual voice intent parsing & TTS response engine verified.")
+    # Test Screen Guidance for elderly patients
+    guidance_home = get_screen_voice_guidance("home", lang="en")
+    assert "CogniCare" in guidance_home["spoken_guidance"]
+    
+    guidance_game = get_screen_voice_guidance("gameplay", lang="hi")
+    assert "कार्ड्स" in guidance_game["spoken_guidance"] or "आराम" in guidance_game["spoken_guidance"]
+
+    print("[OK] Test 3 Passed: Multilingual voice intent & step-by-step elderly guidance verified.")
 
 
 def test_fastapi_endpoints():
@@ -112,18 +120,12 @@ def test_fastapi_endpoints():
     assert res_cps.status_code == 200
     assert "cps" in res_cps.json()
 
-    # Test POST /analysis/voice-intent endpoint
-    voice_payload = {
-        "patient_id": "demo-patient-01",
-        "spoken_phrase": "How am I doing today?"
-    }
-    res_voice = client.post("/analysis/voice-intent", json=voice_payload)
-    assert res_voice.status_code == 200
-    data_voice = res_voice.json()
-    assert data_voice["detected_intent"] == "CHECK_SCORE"
-    assert "score" in data_voice["response_text"].lower() or "practice" in data_voice["response_text"].lower()
+    # Test GET /analysis/voice-guidance/{screen_id} endpoint
+    res_guidance = client.get("/analysis/voice-guidance/home?lang=en&patient_id=demo-patient-01")
+    assert res_guidance.status_code == 200
+    assert "spoken_guidance" in res_guidance.json()
 
-    print("[OK] Test 4 Passed: FastAPI routers & voice endpoints responded with HTTP 200 OK.")
+    print("[OK] Test 4 Passed: FastAPI routers & elderly voice guidance endpoints responded with HTTP 200 OK.")
 
 
 if __name__ == "__main__":

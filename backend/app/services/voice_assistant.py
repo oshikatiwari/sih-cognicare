@@ -1,18 +1,49 @@
 """
 voice_assistant.py
 ------------------
-AI Multilingual Voice Intent Recognition & Spoken Response Engine for CogniCare.
+AI Multilingual Voice Guidance & Elderly Patient Assistance Engine for CogniCare.
 
-Supports English & Hindi spoken queries for elderly dementia patients who prefer
-voice interaction over typing. Parses intents (game navigation, score checks,
-medicine reminders, emergency assistance) and returns warm, encouraging TTS-ready responses.
+Provides step-by-step spoken instructions (English & Hindi) for elderly patients
+with dementia who need gentle, natural voice guidance on every screen of the app
+(e.g., home navigation, starting a game, gameplay instructions, post-game summary,
+and medication reminders).
 """
 
 from typing import Dict, Any, Optional
 from backend.app.services.store import FAKE_DB
 
 
-# Supported Intents
+# Step-by-Step Screen Guidance Prompts for Elderly Patients
+SCREEN_GUIDANCE_PROMPTS = {
+    "home": {
+        "en": "Welcome to CogniCare! Tap the big green game button to start your daily brain exercise, or tap the microphone anytime to talk to me.",
+        "hi": "कॉग्नीकेयर में आपका स्वागत है! अपनी दैनिक दिमागी कसरत शुरू करने के लिए बड़े हरे बटन को दबाएं, या मुझसे बात करने के लिए माइक दबाएं।",
+        "next_step": "Tap green button to play or microphone to speak."
+    },
+    "games_menu": {
+        "en": "Here are your memory activities. Tap 'Memory Matching' with the card icons to begin a comfortable round.",
+        "hi": "यहाँ आपके खेल हैं। अभ्यास शुरू करने के लिए ताश के पत्तों वाले 'मेमोरी मैचिंग' बटन पर टैप करें।",
+        "next_step": "Select Memory Matching game."
+    },
+    "gameplay": {
+        "en": "Take your time. Gently tap two cards to flip them and find a matching pair. There is no rush at all.",
+        "hi": "आराम से खेलें। दो कार्ड्स को मिलाकर जोड़ी खोजें। कोई जल्दी नहीं है, आराम से खेलें।",
+        "next_step": "Tap two matching cards."
+    },
+    "game_results": {
+        "en": "Fantastic effort! Your practice score today is {cps}. Take a short rest and drink some water.",
+        "hi": "बहुत बढ़िया प्रयास! आज आपका अभ्यास स्कोर {cps} है। थोड़ा आराम करें और पानी पी लें।",
+        "next_step": "Rest or choose another game."
+    },
+    "reminders": {
+        "en": "Here is your care schedule. Please take your morning medication with water, then tap 'Completed'.",
+        "hi": "यह आपकी देखभाल का समय है। कृपया अपनी सुबह की दवा पानी के साथ लें, फिर 'पूरा हुआ' पर टैप करें।",
+        "next_step": "Take medicine and confirm."
+    },
+}
+
+
+# Supported Voice Intents
 INTENTS = {
     "START_GAME": ["game", "play", "start", "खेल", "गेम", "शुरू"],
     "CHECK_SCORE": ["score", "progress", "how am i doing", "स्कोर", "प्रदर्शन", "कैसा"],
@@ -22,15 +53,35 @@ INTENTS = {
 }
 
 
+def get_screen_voice_guidance(screen_id: str, lang: str = "en", patient_id: str = "demo-patient-01") -> Dict[str, Any]:
+    """
+    Returns step-by-step spoken guidance for elderly dementia patients navigating any screen.
+    Includes patient score context if on the results screen.
+    """
+    screen_key = screen_id.lower().strip()
+    prompts = SCREEN_GUIDANCE_PROMPTS.get(screen_key, SCREEN_GUIDANCE_PROMPTS["home"])
+
+    history = FAKE_DB.get(patient_id, [])
+    latest_cps = round(history[-1]["cps"], 1) if history else 80.0
+
+    prompt_template = prompts.get(lang, prompts["en"])
+    spoken_guidance = prompt_template.format(cps=latest_cps)
+
+    return {
+        "patient_id": patient_id,
+        "screen_id": screen_key,
+        "language": lang,
+        "spoken_guidance": spoken_guidance,
+        "next_step_instruction": prompts.get("next_step", ""),
+    }
+
+
 def detect_language_and_intent(spoken_phrase: str) -> Dict[str, str]:
     """Detects primary language (English vs Hindi) and matching intent from spoken input."""
     phrase_lower = spoken_phrase.lower().strip()
-
-    # Simple Hindi character detection heuristic
     contains_devanagari = any('\u0900' <= char <= '\u097f' for char in spoken_phrase)
     lang = "hi" if contains_devanagari else "en"
 
-    # Match intent keywords
     detected_intent = "UNKNOWN"
     for intent, keywords in INTENTS.items():
         if any(kw in phrase_lower for kw in keywords):
@@ -49,7 +100,6 @@ def process_voice_query(patient_id: str, spoken_phrase: str) -> Dict[str, Any]:
     lang = parsing["language"]
     intent = parsing["intent"]
 
-    # Fetch patient CPS context if available
     history = FAKE_DB.get(patient_id, [])
     latest_cps = round(history[-1]["cps"], 1) if history else 75.0
 
@@ -106,7 +156,6 @@ def process_voice_query(patient_id: str, spoken_phrase: str) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    # Test English query
-    print(process_voice_query("demo-patient-01", "How am I doing today?"))
-    # Test Hindi query
-    print(process_voice_query("demo-patient-01", "खेल शुरू करें"))
+    # Test Screen Guidance
+    print(get_screen_voice_guidance("home", lang="en"))
+    print(get_screen_voice_guidance("gameplay", lang="hi"))
