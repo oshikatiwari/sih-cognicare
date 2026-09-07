@@ -5,24 +5,19 @@ Standalone runnable entrypoint for the AI Analysis Module.
 Auto-seeds demo data on startup so /analysis/trend/{patient_id}
 returns real data immediately.
 
-IMPORTANT: run this from the REPO ROOT (the sih-cognicare folder),
-not from inside backend/ -- the imports are structured as a package
-(backend.app.services.*, backend.app.routers.*) so Python needs to
-see the repo root to resolve them.
-
-Run (from repo root):
-    pip install fastapi uvicorn --break-system-packages
-    uvicorn backend.main:app --reload
-
-Then open http://localhost:8000/docs, or try:
-    curl http://localhost:8000/analysis/trend/demo-patient-01
-    curl http://localhost:8000/analysis/trend/demo-patient-12   # rigged to show an alert
+Exposes:
+  - GET /analysis/trend/{patient_id}
+  - POST /analysis/cps
+  - POST /analysis/voice-intent (and /voice/intent alias for Mrunaala's Flutter app)
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+
 from backend.app.routers.analysis import router
 from backend.app.services.seed_demo_data import seed
+from backend.app.services.voice_assistant import process_voice_query
 
 app = FastAPI(title="Cognitive Care - AI Analysis Module")
 
@@ -36,6 +31,20 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+
+class VoiceQueryRequest(BaseModel):
+    patient_id: str = Field("demo-patient-01", description="Patient profile ID")
+    spoken_phrase: str = Field("How am I doing today?", description="Spoken text query in English or Hindi")
+
+
+@app.post("/voice/intent", tags=["voice"])
+def voice_intent_alias(payload: VoiceQueryRequest):
+    """
+    Direct alias endpoint matching the roadmap spec for Mrunaala's Flutter Voice Module
+    (lib/voice/stt_service.dart -> POST /voice/intent -> backend AI intent parser).
+    """
+    return process_voice_query(payload.patient_id, payload.spoken_phrase)
 
 
 @app.on_event("startup")
@@ -53,5 +62,6 @@ def root():
             "GET /analysis/trend/demo-patient-01",
             "GET /analysis/trend/demo-patient-12  (shows the anomaly alert)",
             "POST /analysis/cps  (see /docs for body schema)",
+            "POST /voice/intent  (Mrunaala's Flutter voice pipeline endpoint)",
         ],
     }
