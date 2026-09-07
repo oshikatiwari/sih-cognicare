@@ -3,8 +3,8 @@ test_analysis_module.py
 ------------------------
 Automated test suite for Oshika's AI Analysis Module.
 Tests:
-  1. CPS calculator formula accuracy & difficulty tier mapping
-  2. Anomaly detector threshold & alert message check
+  1. CPS calculator formula accuracy, difficulty tier mapping, supportive display labels & seconds auto-conversion
+  2. Anomaly detector threshold & caregiver-friendly alert message check
   3. Seed data generation & patient score history integrity
   4. FastAPI router endpoints via TestClient
 """
@@ -19,9 +19,10 @@ client = TestClient(app)
 
 
 def test_cps_calculation():
-    session = SessionMetrics(
+    # Test Milliseconds input
+    session_ms = SessionMetrics(
         accuracy=90.0,
-        response_time=2000.0,
+        response_time=2000.0,  # 2000 ms
         completion_rate=100.0,
         attempts=10,
         errors=1,
@@ -29,10 +30,26 @@ def test_cps_calculation():
         is_memory_game=True,
         memory_specific_accuracy=95.0,
     )
-    result = calculate_cps(session, recent_accuracies=[88.0, 92.0])
-    assert result["cps"] > 0
-    assert result["difficulty_tier"] in ["Easy", "Moderate", "Medium-Hard", "Hard"]
-    print("[OK] Test 1 Passed: CPS calculation & difficulty tier mapping verified.")
+    result_ms = calculate_cps(session_ms, recent_accuracies=[88.0, 92.0])
+    assert result_ms["cps"] > 0
+    assert result_ms["difficulty_tier"] in ["Easy", "Moderate", "Medium-Hard", "Hard"]
+    assert "display_label" in result_ms
+
+    # Test Seconds input (2.0s -> 2000ms auto-conversion)
+    session_sec = SessionMetrics(
+        accuracy=90.0,
+        response_time=2.0,  # 2.0 seconds
+        completion_rate=100.0,
+        attempts=10,
+        errors=1,
+        hints_used=0,
+        is_memory_game=True,
+        memory_specific_accuracy=95.0,
+    )
+    result_sec = calculate_cps(session_sec, recent_accuracies=[88.0, 92.0])
+    assert result_sec["cps"] == result_ms["cps"], "Seconds and Milliseconds should produce identical CPS"
+
+    print("[OK] Test 1 Passed: CPS calculation, difficulty mapping & supportive display labels verified.")
 
 
 def test_anomaly_detection():
@@ -43,8 +60,8 @@ def test_anomaly_detection():
     alert = check_trend(drop_history)
     assert alert is not None
     assert alert["alert"] is True
-    assert "Significant change observed" in alert["message"]
-    print("[OK] Test 2 Passed: Anomaly detection drop threshold & non-diagnostic phrasing verified.")
+    assert "caregiver review is recommended" in alert["message"]
+    print("[OK] Test 2 Passed: Anomaly detection drop threshold & caregiver-friendly phrasing verified.")
 
 
 def test_fastapi_endpoints():
@@ -83,6 +100,7 @@ def test_fastapi_endpoints():
     res_cps = client.post("/analysis/cps", json=cps_payload)
     assert res_cps.status_code == 200
     assert "cps" in res_cps.json()
+    assert "display_label" in res_cps.json()
     print("[OK] Test 3 Passed: FastAPI routers & endpoints responded with HTTP 200 OK.")
 
 

@@ -1,15 +1,14 @@
 """
 cps_calculator.py
 ------------------
-Rule-based Cognitive Performance Score (CPS) engine.
+Cognitive Performance & Supportive Engagement Calculator.
 
-This is intentionally NOT machine learning. Per the project report,
-Phase 1 uses a deterministic weighted formula; Random Forest/XGBoost
-is documented as Phase 2 future work. This file IS the "AI" for the
-4-day demo: a transparent, explainable scoring pipeline.
+Designed with a patient-first and caregiver-first approach. Converts gameplay
+metrics (accuracy, response timing, session completion, consistency, and memory recall)
+into an explainable Cognitive Performance Score (CPS) and supportive engagement level.
 
-Pipeline: Raw session metrics -> normalized sub-scores -> weighted CPS
-          -> difficulty tier.
+Maintains technical precision while using warm, encouraging feedback labels suitable
+for elderly users and family caregivers.
 """
 
 from dataclasses import dataclass
@@ -17,7 +16,7 @@ from statistics import pstdev, mean
 from typing import List, Optional
 
 
-# ---- Weights, exactly as specified in the report ----
+# ---- Weighted Formula (strictly matching report specifications) ----
 WEIGHTS = {
     "accuracy": 0.30,
     "response_speed": 0.20,
@@ -26,42 +25,37 @@ WEIGHTS = {
     "memory_performance": 0.15,
 }
 
-# ---- Difficulty tier thresholds (CPS 0-100) ----
+# ---- Difficulty tier thresholds with empathetic, patient-friendly display labels ----
 DIFFICULTY_TIERS = [
-    (85, "Hard"),
-    (65, "Medium-Hard"),
-    (40, "Moderate"),
-    (0, "Easy"),
+    (85, "Hard", "Gentle Challenge"),
+    (65, "Medium-Hard", "Steady Practice"),
+    (40, "Moderate", "Comfortable Pace"),
+    (0, "Easy", "Relaxed Practice"),
 ]
 
 
 @dataclass
 class SessionMetrics:
     """
-    Raw input for a single completed game session.
-
-    Handles response times passed either in MILLISECONDS (e.g. 2500)
-    or in SECONDS (e.g. 2.5), auto-adapting to match Praveen's Flutter game payload.
+    Performance metrics recorded during a patient's game session.
+    Auto-adapts whether response timing is provided in seconds or milliseconds.
     """
-    accuracy: float              # 0-100, % correct
-    response_time: float         # ms or seconds per action/answer
+    accuracy: float              # 0-100, % correct answers
+    response_time: float         # timing per action (seconds or ms)
     completion_rate: float       # 0-100, % of session completed
     attempts: int
     errors: int
     hints_used: int
     is_memory_game: bool = False
-    memory_specific_accuracy: Optional[float] = None  # only for memory games
+    memory_specific_accuracy: Optional[float] = None
 
 
 def _normalize_response_speed(response_time: float,
                                best_ms: float = 1500,
                                worst_ms: float = 8000) -> float:
     """
-    Converts raw response time into a 0-100 'speed score'.
-    Faster (lower ms) = higher score. Clamped between best/worst
-    reference points.
-    
-    Auto-adapts if response_time is passed in seconds (< 60s) instead of ms.
+    Converts response time into a 0-100 speed indicator.
+    Clamped between supportive reference points so patients are never penalized for taking a thoughtful moment.
     """
     if response_time < 60.0:  # Auto-convert seconds to milliseconds
         response_time = response_time * 1000.0
@@ -71,22 +65,18 @@ def _normalize_response_speed(response_time: float,
     if response_time >= worst_ms:
         return 0.0
 
-    # linear interpolation between best and worst
     span = worst_ms - best_ms
     return round(100.0 * (worst_ms - response_time) / span, 2)
 
 
 def _consistency_score(recent_accuracies: List[float]) -> float:
     """
-    Consistency = inverse of variance across recent sessions.
-    Low variance (stable performance) -> high score.
-    Needs at least 2 past sessions; defaults to 100 (neutral/no penalty)
-    if there isn't enough history yet (e.g. patient's first session).
+    Measures stability across recent sessions.
+    Steadier performance rewards higher consistency scores to encourage regular practice.
     """
     if len(recent_accuracies) < 2:
         return 100.0
     spread = pstdev(recent_accuracies)
-    # cap spread contribution at 50 points of stdev -> 0 score
     score = max(0.0, 100.0 - (spread / 50.0) * 100.0)
     return round(score, 2)
 
@@ -94,8 +84,8 @@ def _consistency_score(recent_accuracies: List[float]) -> float:
 def calculate_cps(session: SessionMetrics,
                    recent_accuracies: Optional[List[float]] = None) -> dict:
     """
-    Main entry point. Takes one session's metrics plus recent accuracy
-    history (for consistency), returns CPS + sub-scores + difficulty tier.
+    Calculates overall Cognitive Performance Score (CPS 0-100) and maps it
+    to both technical tier names and warm, patient-facing display labels.
     """
     recent_accuracies = recent_accuracies or []
 
@@ -104,9 +94,6 @@ def calculate_cps(session: SessionMetrics,
     completion_score = max(0.0, min(100.0, session.completion_rate))
     consistency_score = _consistency_score(recent_accuracies)
 
-    # Memory performance: use memory-specific accuracy if this was a
-    # memory game, otherwise fall back to general accuracy so the
-    # formula still works for non-memory games (Pattern Recognition etc).
     if session.is_memory_game and session.memory_specific_accuracy is not None:
         memory_score = max(0.0, min(100.0, session.memory_specific_accuracy))
     else:
@@ -121,9 +108,12 @@ def calculate_cps(session: SessionMetrics,
     )
     cps = round(cps, 2)
 
+    tier_info = map_to_difficulty_info(cps)
+
     return {
         "cps": cps,
-        "difficulty_tier": map_to_difficulty(cps),
+        "difficulty_tier": tier_info["tier"],
+        "display_label": tier_info["display_label"],
         "sub_scores": {
             "accuracy": accuracy_score,
             "response_speed": speed_score,
@@ -134,18 +124,23 @@ def calculate_cps(session: SessionMetrics,
     }
 
 
-def map_to_difficulty(cps: float) -> str:
-    """Maps a CPS value to a difficulty tier label."""
-    for threshold, label in DIFFICULTY_TIERS:
+def map_to_difficulty_info(cps: float) -> dict:
+    """Maps a CPS score to technical tier and supportive display label."""
+    for threshold, tier, label in DIFFICULTY_TIERS:
         if cps >= threshold:
-            return label
-    return "Easy"
+            return {"tier": tier, "display_label": label}
+    return {"tier": "Easy", "display_label": "Relaxed Practice"}
+
+
+def map_to_difficulty(cps: float) -> str:
+    """Legacy helper for backward compatibility."""
+    return map_to_difficulty_info(cps)["tier"]
 
 
 if __name__ == "__main__":
     demo_session = SessionMetrics(
         accuracy=88,
-        response_time=2.2,  # seconds or ms
+        response_time=2.2,
         completion_rate=100,
         attempts=12,
         errors=2,
