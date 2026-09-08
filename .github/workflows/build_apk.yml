@@ -1,4 +1,4 @@
-﻿name: Build Android APKs
+﻿name: Build Android APK
 
 on: [push, workflow_dispatch]
 
@@ -16,13 +16,9 @@ jobs:
         with:
           flutter-version: '3.22.x'
           channel: 'stable'
-      - name: Generate Android Platform & Build APK
+      - name: Build Flutter APK
         working-directory: frontend
         run: |
-          flutter create . --platforms=android
-          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle || true
-          sed -i 's/minSdkVersion 16/minSdkVersion 21/g' android/app/build.gradle || true
-          sed -i 's/minSdkVersion 19/minSdkVersion 21/g' android/app/build.gradle || true
           flutter pub get
           flutter build apk --debug
       - uses: actions/upload-artifact@v4
