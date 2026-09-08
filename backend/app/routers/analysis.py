@@ -1,203 +1,186 @@
 """
-app/routers/analysis.py
-------------------------
-FastAPI router for Smriti AI Analysis, Caregiver Support, 5-Language Voice Engine & Bluetooth Speaker Guidance.
-
-Features:
-  - Duolingo-style 5-Language Catalog (en, hi, as, mzo, kha)
-  - On-Demand Translation Service
-  - Bluetooth Speaker & Hearing Aid Audio Guidance for Elderly Patients
-  - Step-by-Step Screen Guidance per screen
-  - CPS Scoring & Caregiver Progress History
+analysis.py
+-----------
+FastAPI Router exposing AI Cognitive Scoring, Multilingual Voice Intent Guidance,
+Bluetooth Speaker Pairing, and Caregiver Monitoring endpoints for Smriti (স্মৃতি).
 """
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from typing import Optional, List
-from datetime import datetime
+from typing import Optional, List, Dict, Any
 
-from backend.app.services.cps_calculator import SessionMetrics, calculate_cps
-from backend.app.services.anomaly_detector import check_trend
-from backend.app.services.store import FAKE_DB
+from backend.app.services.cps_calculator import (
+    calculate_cps,
+    SessionMetrics,
+    map_to_difficulty_info,
+)
+from backend.app.services.anomaly_detector import (
+    detect_cps_anomalies,
+    get_game_monitoring_breakdown,
+)
 from backend.app.services.voice_assistant import (
-    process_voice_query,
-    get_screen_voice_guidance,
     get_supported_languages,
     get_bluetooth_audio_guidance,
+    get_screen_voice_guidance,
+    process_voice_query,
     translate_text,
 )
+from backend.app.services.store import FAKE_DB, get_patient_history, save_patient_session
 
-router = APIRouter(prefix="/analysis", tags=["analysis"])
+
+router = APIRouter(prefix="/analysis", tags=["AI Analysis & Voice Guidance"])
 
 
 class CPSRequest(BaseModel):
-    session_id: str = Field("demo-session-01", description="Unique session ID")
-    patient_id: str = Field("demo-patient-01", description="Patient profile ID")
-    accuracy: float = Field(80.0, ge=0, le=100, description="Percentage of correct answers (%)")
-    response_time: float = Field(2500.0, ge=0, description="Average response timing per action (seconds or ms)")
-    completion_rate: float = Field(100.0, ge=0, le=100, description="Percentage of session completed (%)")
-    attempts: int = Field(0, description="Total attempts taken")
-    errors: int = Field(0, description="Number of minor errors")
-    hints_used: int = Field(0, description="Number of hints requested")
-    is_memory_game: bool = Field(False, description="True if session was a memory recall activity")
-    memory_specific_accuracy: Optional[float] = Field(None, description="Memory recall accuracy score (%)")
-
-
-class CPSResponse(BaseModel):
-    cps: float = Field(..., description="Overall Cognitive Performance Score (0-100)")
-    difficulty_tier: str = Field(..., description="Technical engagement level name (Easy, Moderate, Medium-Hard, Hard)")
-    display_label: Optional[str] = Field(None, description="Warm, patient-facing display label (e.g. Comfortable Pace, Gentle Challenge)")
-    sub_scores: dict = Field(..., description="Detailed breakdowns across accuracy, speed, completion, consistency, and memory")
-
-
-class TrendResponse(BaseModel):
-    scores: List[dict] = Field(..., description="Chronological progress history")
-    alert: Optional[str] = Field(None, description="Caregiver notification message if a gentle check-in is recommended")
+    patient_id: str = Field(default="demo-patient-01", description="Unique identifier for patient")
+    game_type: str = Field(default="memory_match", description="Game key: memory_match, number_sequence, word_recall, picture_association")
+    difficulty: str = Field(default="medium", description="Difficulty: easy, medium, hard")
+    accuracy: float = Field(..., ge=0.0, le=100.0, description="Percentage of correct actions (0-100)")
+    response_time: float = Field(..., gt=0.0, description="Average response time per action in seconds or ms")
+    completion_rate: float = Field(default=100.0, ge=0.0, le=100.0, description="Session completion percentage")
+    attempts: int = Field(default=10, ge=1, description="Total attempts in session")
+    errors: int = Field(default=0, ge=0, description="Total errors in session")
+    hints_used: int = Field(default=0, ge=0, description="Total hints requested")
+    memory_specific_accuracy: Optional[float] = Field(default=None, description="Optional domain recall accuracy")
 
 
 class VoiceQueryRequest(BaseModel):
-    patient_id: str = Field("demo-patient-01", description="Patient profile ID")
-    spoken_phrase: str = Field("How am I doing today?", description="Spoken text query in English, Hindi, Assamese, Mizo, or Khasi")
-    lang: Optional[str] = Field(None, description="Optional language override code: en, hi, as, mzo, kha")
-
-
-class VoiceQueryResponse(BaseModel):
-    patient_id: str
-    input_phrase: str
-    detected_language: str
-    detected_intent: str
-    response_text: str
-    action: dict
-
-
-class VoiceGuidanceResponse(BaseModel):
-    patient_id: str
-    screen_id: str
-    language: str
-    spoken_guidance: str
-    next_step_instruction: str
+    patient_id: str = Field(default="demo-patient-01", description="Patient ID")
+    spoken_phrase: str = Field(..., description="Spoken voice phrase transcribed by STT")
+    language: Optional[str] = Field(default=None, description="Optional language override code (en, hi, as, mzo, kha)")
 
 
 class TranslationRequest(BaseModel):
-    text: str = Field(..., description="Text or guidance phrase to translate")
-    source_lang: str = Field("en", description="Source language code")
-    target_lang: str = Field("hi", description="Target language code: en, hi, as, mzo, kha")
+    text: str = Field(..., description="Source text to translate")
+    source_lang: str = Field(default="en", description="Source language code")
+    target_lang: str = Field(..., description="Target language code (en, hi, as, mzo, kha)")
 
 
-class TranslationResponse(BaseModel):
-    source_lang: str
-    target_lang: str
-    original_text: str
-    translated_text: str
-
-
-@router.get("/languages")
-def get_language_catalog():
-    """Returns Duolingo-style 5-language selection catalog (en, hi, as, mzo, kha)."""
-    return get_supported_languages()
-
-
-@router.get("/bluetooth-guidance")
-def get_bluetooth_pairing_guidance(lang: str = Query("en", description="Language code: en, hi, as, mzo, kha")):
-    """Returns spoken notification prompt when Bluetooth speaker, hearing aid, phone, or PC is paired."""
-    return get_bluetooth_audio_guidance(lang=lang)
-
-
-@router.post("/translate", response_model=TranslationResponse)
-def translate_guidance(payload: TranslationRequest):
-    """Translates text or guidance phrase on-demand between any of the 5 supported languages."""
-    return translate_text(payload.text, payload.source_lang, payload.target_lang)
-
-
-@router.post("/cps", response_model=CPSResponse)
-def calculate_and_store_cps(payload: CPSRequest):
+@router.post("/cps", response_model=Dict[str, Any])
+def calculate_session_score(payload: CPSRequest):
     """
-    Evaluates gameplay metrics from a finished activity round, computes a supportive
-    Cognitive Performance Score (CPS), and updates the patient's recommended practice level.
+    Calculates Cognitive Performance Score (CPS) for any game session,
+    checks for domain anomalies, and persists session record.
     """
-    history = FAKE_DB.get(payload.patient_id, [])
-    recent_accuracies = [h["accuracy"] for h in history[-5:]]
-
-    metrics = SessionMetrics(
+    session = SessionMetrics(
+        game_type=payload.game_type,
+        difficulty=payload.difficulty,
         accuracy=payload.accuracy,
         response_time=payload.response_time,
         completion_rate=payload.completion_rate,
         attempts=payload.attempts,
         errors=payload.errors,
         hints_used=payload.hints_used,
-        is_memory_game=payload.is_memory_game,
+        is_memory_game=True,
         memory_specific_accuracy=payload.memory_specific_accuracy,
     )
 
-    result = calculate_cps(metrics, recent_accuracies=recent_accuracies)
+    history = get_patient_history(payload.patient_id)
+    recent_accuracies = [h.get("accuracy", 80.0) for h in history[-5:]]
 
-    FAKE_DB.setdefault(payload.patient_id, []).append({
-        "session_id": payload.session_id,
-        "cps": result["cps"],
+    cps_result = calculate_cps(session, recent_accuracies=recent_accuracies)
+
+    # Persist session to store
+    session_record = {
+        "cps": cps_result["cps"],
+        "game_type": payload.game_type,
+        "difficulty": payload.difficulty,
         "accuracy": payload.accuracy,
-        "timestamp": datetime.now().isoformat(),
-    })
+        "response_time": payload.response_time,
+        "completion_rate": payload.completion_rate,
+        "display_label": cps_result["display_label"],
+    }
+    save_patient_session(payload.patient_id, session_record)
 
-    return CPSResponse(
-        cps=result["cps"],
-        difficulty_tier=result["difficulty_tier"],
-        display_label=result.get("display_label"),
-        sub_scores=result["sub_scores"],
-    )
+    # Check for domain anomalies
+    updated_history = get_patient_history(payload.patient_id)
+    anomaly_status = detect_cps_anomalies(updated_history)
+
+    return {
+        "status": "success",
+        "patient_id": payload.patient_id,
+        "cps_score": cps_result["cps"],
+        "game_type": payload.game_type,
+        "difficulty": payload.difficulty,
+        "cognitive_domain": cps_result["cognitive_domain"],
+        "difficulty_tier": cps_result["difficulty_tier"],
+        "display_label": cps_result["display_label"],
+        "caregiver_summary": cps_result["caregiver_summary"],
+        "sub_scores": cps_result["sub_scores"],
+        "anomaly_status": anomaly_status,
+    }
 
 
-@router.get("/trend/{patient_id}", response_model=TrendResponse)
-def get_trend(patient_id: str):
-    """
-    Returns progress trend history for family caregivers and highlights when extra
-    support or a gentle check-in may be helpful.
-    """
-    history = FAKE_DB.get(patient_id, [])
+@router.get("/trend/{patient_id}", response_model=Dict[str, Any])
+def get_patient_trend(patient_id: str):
+    """Returns longitudinal trend history and anomaly evaluation for caregiver review."""
+    history = get_patient_history(patient_id)
     if not history:
-        return TrendResponse(scores=[], alert=None)
+        raise HTTPException(status_code=404, detail=f"No patient history found for {patient_id}")
 
-    scores = [{"session_id": h["session_id"], "cps": h["cps"], "timestamp": h["timestamp"]}
-              for h in history]
-    cps_values = [h["cps"] for h in history]
+    cps_trend = [round(h["cps"], 1) for h in history]
+    anomaly_eval = detect_cps_anomalies(history)
 
-    anomaly = check_trend(cps_values)
-    alert_message = anomaly["message"] if anomaly else None
-
-    return TrendResponse(scores=scores, alert=alert_message)
-
-
-@router.post("/voice-intent", response_model=VoiceQueryResponse)
-def process_voice_intent(payload: VoiceQueryRequest):
-    """
-    Processes spoken voice queries from elderly dementia patients in English, Hindi, Assamese, Mizo, or Khasi.
-    Detects intent, fetches patient context (e.g. current CPS score), and returns a TTS-ready response.
-    """
-    result = process_voice_query(payload.patient_id, payload.spoken_phrase, forced_lang=payload.lang)
-    return VoiceQueryResponse(
-        patient_id=result["patient_id"],
-        input_phrase=result["input_phrase"],
-        detected_language=result["detected_language"],
-        detected_intent=result["detected_intent"],
-        response_text=result["response_text"],
-        action=result["action"],
-    )
+    return {
+        "patient_id": patient_id,
+        "total_sessions": len(history),
+        "latest_cps": cps_trend[-1],
+        "cps_history": cps_trend,
+        "anomaly_status": anomaly_eval,
+    }
 
 
-@router.get("/voice-guidance/{screen_id}", response_model=VoiceGuidanceResponse)
-def get_voice_guidance_for_screen(
+@router.get("/monitoring/{patient_id}", response_model=Dict[str, Any])
+def get_monitoring_dashboard(patient_id: str):
+    """Returns per-game monitoring breakdown for caregiver dashboards."""
+    history = get_patient_history(patient_id)
+    breakdown = get_game_monitoring_breakdown(history)
+    anomaly_status = detect_cps_anomalies(history)
+
+    return {
+        "patient_id": patient_id,
+        "monitoring_breakdown": breakdown,
+        "anomaly_status": anomaly_status,
+    }
+
+
+@router.get("/languages", response_model=List[Dict[str, str]])
+def list_languages():
+    """Returns catalog of supported languages for Duolingo-style picker."""
+    return get_supported_languages()
+
+
+@router.get("/voice-guidance/{screen_id}", response_model=Dict[str, Any])
+def get_voice_guidance(
     screen_id: str,
-    lang: str = Query("en", description="Language code: en, hi, as, mzo, kha"),
-    patient_id: str = Query("demo-patient-01", description="Patient profile ID"),
+    lang: str = Query(default="en", description="Language code: en, hi, as, mzo, kha"),
+    patient_id: str = Query(default="demo-patient-01", description="Patient ID"),
 ):
-    """
-    Provides step-by-step spoken navigation guidance across 5 languages (English, Hindi, Assamese, Mizo, Khasi)
-    for elderly dementia patients entering any screen (home, games_menu, gameplay, game_results, reminders).
-    """
-    result = get_screen_voice_guidance(screen_id=screen_id, lang=lang, patient_id=patient_id)
-    return VoiceGuidanceResponse(
-        patient_id=result["patient_id"],
-        screen_id=result["screen_id"],
-        language=result["language"],
-        spoken_guidance=result["spoken_guidance"],
-        next_step_instruction=result["next_step_instruction"],
+    """Returns step-by-step spoken guidance prompt for any screen or game in 5 languages."""
+    return get_screen_voice_guidance(screen_id=screen_id, lang=lang, patient_id=patient_id)
+
+
+@router.post("/voice-intent", response_model=Dict[str, Any])
+def parse_voice_intent(payload: VoiceQueryRequest):
+    """Parses spoken phrase, detects intent & language, and provides TTS response."""
+    return process_voice_query(
+        patient_id=payload.patient_id,
+        spoken_phrase=payload.spoken_phrase,
+        forced_lang=payload.language,
     )
+
+
+@router.post("/translate", response_model=Dict[str, str])
+def handle_translation(payload: TranslationRequest):
+    """Translates text or guidance phrase on-demand."""
+    return translate_text(
+        text=payload.text,
+        source_lang=payload.source_lang,
+        target_lang=payload.target_lang,
+    )
+
+
+@router.get("/bluetooth-guidance", response_model=Dict[str, str])
+def get_bluetooth_guidance(lang: str = Query(default="en", description="Language code")):
+    """Returns spoken notification prompt for Bluetooth speaker / hearing aid pairing."""
+    return get_bluetooth_audio_guidance(lang=lang)

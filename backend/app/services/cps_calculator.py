@@ -1,11 +1,12 @@
 """
 cps_calculator.py
 ------------------
-Cognitive Performance & Supportive Engagement Calculator.
+Cognitive Performance & Supportive Engagement Calculator for Smriti (স্মৃতি).
 
 Designed with a patient-first and caregiver-first approach. Converts gameplay
-metrics (accuracy, response timing, session completion, consistency, and memory recall)
-into an explainable Cognitive Performance Score (CPS) and supportive engagement level.
+metrics across all 4 primary cognitive games (Memory Match, Number Sequence,
+Word Recall, Picture Association) and difficulty levels (Easy, Medium, Hard) into an
+explainable Cognitive Performance Score (CPS) and supportive engagement level.
 
 Maintains technical precision while using warm, encouraging feedback labels suitable
 for elderly users and family caregivers.
@@ -13,10 +14,10 @@ for elderly users and family caregivers.
 
 from dataclasses import dataclass
 from statistics import pstdev, mean
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 
-# ---- Weighted Formula (strictly matching report specifications) ----
+# ---- Weighted Formula Weights ----
 WEIGHTS = {
     "accuracy": 0.30,
     "response_speed": 0.20,
@@ -25,13 +26,48 @@ WEIGHTS = {
     "memory_performance": 0.15,
 }
 
-# ---- Difficulty tier thresholds with empathetic, patient-friendly display labels ----
+# ---- Difficulty Tier Multipliers ----
+DIFFICULTY_MULTIPLIERS = {
+    "easy": 1.0,
+    "medium": 1.15,
+    "hard": 1.30,
+}
+
+# ---- Difficulty Tiers with Empathetic Display Labels ----
 DIFFICULTY_TIERS = [
     (85, "Hard", "Gentle Challenge"),
     (65, "Medium-Hard", "Steady Practice"),
     (40, "Moderate", "Comfortable Pace"),
     (0, "Easy", "Relaxed Practice"),
 ]
+
+# ---- Game Cognitive Domain Metadata ----
+GAME_DOMAINS = {
+    "memory_match": {
+        "domain_name": "Visual Paired Memory",
+        "description": "Matching pairs of Assam flowers, tea leaves, and family faces",
+    },
+    "number_sequence": {
+        "domain_name": "Working Auditory Memory",
+        "description": "Listening to spoken number sequences and repeating them",
+    },
+    "word_recall": {
+        "domain_name": "Semantic Traditional Memory",
+        "description": "Recalling words from local cultural traditions and heritage",
+    },
+    "picture_association": {
+        "domain_name": "Visual Semantic Association",
+        "description": "Matching pictures with their traditional meanings and context",
+    },
+    "pattern_game": {
+        "domain_name": "Spatial Reasoning",
+        "description": "Recognizing spatial patterns and sequences",
+    },
+    "object_id": {
+        "domain_name": "Object Recognition",
+        "description": "Identifying everyday familiar household objects",
+    },
+}
 
 
 @dataclass
@@ -40,13 +76,15 @@ class SessionMetrics:
     Performance metrics recorded during a patient's game session.
     Auto-adapts whether response timing is provided in seconds or milliseconds.
     """
-    accuracy: float              # 0-100, % correct answers
-    response_time: float         # timing per action (seconds or ms)
-    completion_rate: float       # 0-100, % of session completed
-    attempts: int
-    errors: int
-    hints_used: int
-    is_memory_game: bool = False
+    game_type: str = "memory_match"       # memory_match, number_sequence, word_recall, picture_association
+    difficulty: str = "medium"           # easy, medium, hard
+    accuracy: float = 80.0               # 0-100, % correct answers
+    response_time: float = 3.0          # timing per action (seconds or ms)
+    completion_rate: float = 100.0       # 0-100, % of session completed
+    attempts: int = 10
+    errors: int = 2
+    hints_used: int = 1
+    is_memory_game: bool = True
     memory_specific_accuracy: Optional[float] = None
 
 
@@ -82,10 +120,10 @@ def _consistency_score(recent_accuracies: List[float]) -> float:
 
 
 def calculate_cps(session: SessionMetrics,
-                   recent_accuracies: Optional[List[float]] = None) -> dict:
+                   recent_accuracies: Optional[List[float]] = None) -> Dict[str, Any]:
     """
-    Calculates overall Cognitive Performance Score (CPS 0-100) and maps it
-    to both technical tier names and warm, patient-facing display labels.
+    Calculates overall Cognitive Performance Score (CPS 0-100) across any of the
+    4 primary games and difficulty tiers.
     """
     recent_accuracies = recent_accuracies or []
 
@@ -94,24 +132,35 @@ def calculate_cps(session: SessionMetrics,
     completion_score = max(0.0, min(100.0, session.completion_rate))
     consistency_score = _consistency_score(recent_accuracies)
 
-    if session.is_memory_game and session.memory_specific_accuracy is not None:
+    if session.memory_specific_accuracy is not None:
         memory_score = max(0.0, min(100.0, session.memory_specific_accuracy))
     else:
         memory_score = accuracy_score
 
-    cps = (
+    raw_cps = (
         accuracy_score * WEIGHTS["accuracy"]
         + speed_score * WEIGHTS["response_speed"]
         + completion_score * WEIGHTS["completion_rate"]
         + consistency_score * WEIGHTS["consistency"]
         + memory_score * WEIGHTS["memory_performance"]
     )
-    cps = round(cps, 2)
+
+    diff_key = session.difficulty.lower().strip()
+    multiplier = DIFFICULTY_MULTIPLIERS.get(diff_key, 1.0)
+    
+    # Scale with difficulty while capping smoothly at 100.0
+    cps = min(100.0, round(raw_cps * (0.85 + 0.15 * multiplier), 2))
 
     tier_info = map_to_difficulty_info(cps)
 
+    game_key = session.game_type.lower().strip()
+    domain_meta = GAME_DOMAINS.get(game_key, GAME_DOMAINS["memory_match"])
+
     return {
         "cps": cps,
+        "game_type": game_key,
+        "difficulty": session.difficulty.capitalize(),
+        "cognitive_domain": domain_meta["domain_name"],
         "difficulty_tier": tier_info["tier"],
         "display_label": tier_info["display_label"],
         "sub_scores": {
@@ -121,6 +170,10 @@ def calculate_cps(session: SessionMetrics,
             "consistency": consistency_score,
             "memory_performance": memory_score,
         },
+        "caregiver_summary": (
+            f"Demonstrated {tier_info['display_label']} in {domain_meta['domain_name']} "
+            f"({session.difficulty.capitalize()} level) with {accuracy_score}% accuracy."
+        )
     }
 
 
@@ -139,14 +192,14 @@ def map_to_difficulty(cps: float) -> str:
 
 if __name__ == "__main__":
     demo_session = SessionMetrics(
-        accuracy=88,
-        response_time=2.2,
+        game_type="number_sequence",
+        difficulty="hard",
+        accuracy=90,
+        response_time=2.1,
         completion_rate=100,
-        attempts=12,
-        errors=2,
-        hints_used=1,
-        is_memory_game=True,
-        memory_specific_accuracy=91,
+        attempts=8,
+        errors=1,
+        hints_used=0,
     )
-    result = calculate_cps(demo_session, recent_accuracies=[80, 85, 82])
+    result = calculate_cps(demo_session, recent_accuracies=[82, 85, 88])
     print(result)

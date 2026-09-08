@@ -1,13 +1,14 @@
 """
 voice_assistant.py
 ------------------
-AI Multilingual Voice Guidance, On-Demand Translation & Bluetooth Speaker Assistance Engine for Smriti (स्मृति / 💾).
+AI Multilingual Voice Guidance, On-Demand Translation & Bluetooth Speaker Assistance Engine for Smriti (স্মৃতি / 💾).
 
 Features:
   1. 5-Language Support: English (en), Hindi (hi), Assamese (as), Mizo (mzo), Khasi (kha).
   2. Duolingo-Style Language Selector & On-Demand Text Translation.
   3. Bluetooth Audio Speaker & Hearing Aid Pairing Guidance for Elderly Patients.
-  4. Step-by-Step Screen Guidance & Multilingual Voice Intent Parsing.
+  4. Step-by-Step Screen & Game Guidance Prompts walking elderly patients through every action.
+  5. Intent Parser & Voice Query Processing for hands-free app navigation.
 """
 
 from typing import Dict, Any, Optional, List
@@ -24,7 +25,7 @@ SUPPORTED_LANGUAGES = [
 ]
 
 
-# Step-by-Step Screen Guidance Prompts for Elderly Patients
+# Step-by-Step Screen & Game Guidance Prompts for Elderly Patients (5 Languages)
 SCREEN_GUIDANCE_PROMPTS = {
     "home": {
         "en": "Welcome to Smriti! Tap the big green game button to start your daily brain exercise, or tap the microphone anytime to talk to me.",
@@ -34,21 +35,69 @@ SCREEN_GUIDANCE_PROMPTS = {
         "kha": "Pdiang burom sha Smriti! Pynkiat iaphi ban pynkyntiew iaka jingmut da kaba kynton iaka button haing, lada kwah ban kren kynton iaka microphone.",
         "next_step": "Select green game button or tap microphone to speak."
     },
-    "games_menu": {
-        "en": "Here are your Smriti memory activities. Tap 'Memory Matching' with the card icons to begin a comfortable round.",
-        "hi": "यहाँ आपके स्मृति खेल हैं। अभ्यास शुरू करने के लिए ताश के पत्तों वाले 'मेमोरी मैचिंग' बटन पर टैप करें।",
-        "as": "ইয়ালৈ আপোনাৰ স্মৃতি খেলসমূহ আছে। আৰম্ভ কৰিবলৈ কাৰ্ড চিন থকা 'মেম'ৰী মেচিং' বুটামত টিপক।",
-        "mzo": "Hian hriatrengna infiamnate a awm e. A awlsam zawnga tan turin card lem awmna 'Memory Matching' hmet rawh.",
-        "kha": "Hane ki jingialeh pynkynmaw jong phi. Kynton ia ka 'Memory Matching' ban sdang ia ka jingialeh.",
-        "next_step": "Select Memory Matching game."
+    "language_selection": {
+        "en": "Select your language. Tap English, Hindi, Assamese, Mizo, or Khasi to hear all instructions in your mother tongue.",
+        "hi": "अपनी भाषा चुनें। अपनी मातृभाषा में सभी निर्देश सुनने के लिए हिंदी, अंग्रेजी, असमिया, मिज़ो या खासी पर टैप करें।",
+        "as": "আপোনাৰ ভাষা বাছি লওক। আপোনাৰ মাতৃভাষাত সকলো নিৰ্দেশনা শুনিবলৈ অসমীয়া, হিন্দী, ইংৰাজী, মিজো বা খাচী টিপক।",
+        "mzo": "I ṭawng duh thlang rawh. I nu ṭawngngeia hriat turin English, Hindi, Assamese, Mizo, a nih loh chuan Khasi hmet rawh.",
+        "kha": "Jied ia ka ktien jong phi. Kynton English, Hindi, Assamese, Mizo, lane Khasi ban sngap ia ki jingbthah ha ka ktien haing.",
+        "next_step": "Tap on your preferred language flag."
     },
-    "gameplay": {
-        "en": "Take your time. Gently tap two cards to flip them and find a matching pair. There is no rush at all.",
-        "hi": "आराम से खेलें। दो कार्ड्स को मिलाकर जोड़ी खोजें। कोई जल्दी नहीं है, आराम से खेलें।",
-        "as": "ধৈৰ্য্যেৰে খেলক। দুখন কাৰ্ড উলটাই মিলা জোৰা বিচাৰি উলিয়াওক। কোনো খৰখেদা নাই।",
-        "mzo": "Hmanhmawh duh suh. Card pahnih hmet la, a inhnim hnai tur zawn chhuah tum rawh.",
-        "kha": "Wat pynhap jingmut. Kynton ia ar ki card ban wad ia kiba iadei. Ym don jingkloi stet.",
-        "next_step": "Tap two matching cards."
+    "mode_selection": {
+        "en": "Choose your mode. Tap 'Patient' for brain games, or tap 'Caregiver' to view progress reports.",
+        "hi": "अपना मोड चुनें। खेलों के लिए 'रोगी (Patient)' दबाएं, या रिपोर्ट देखने के लिए 'केयरगिवर' दबाएं।",
+        "as": "আপোনাৰ ম'ড বাছি লওক। খেলৰ বাবে 'ৰোগী' বাছি লওক, নতুবা প্ৰতিবেদন চাবলৈ 'তত্ত্বাৱধানকাৰী' টিপক।",
+        "mzo": "I hmanning thlang rawh. Infiamna tan 'Patient' hmet la, report pekkawng en turin 'Caregiver' hmet rawh.",
+        "kha": "Jied ia ka rukom. Kynton 'Patient' na bynta ki jingialeh, lane 'Caregiver' ban peit iaki kaiphriot.",
+        "next_step": "Select Patient or Caregiver mode."
+    },
+    "difficulty_selection": {
+        "en": "Select difficulty. Tap Easy for a relaxed pace, Medium for steady practice, or Hard for a gentle challenge.",
+        "hi": "कठिनाई चुनें। आसान अभ्यास के लिए Easy, मध्यम के लिए Medium, या चुनौती के लिए Hard दबाएं।",
+        "as": "কঠিনতা বাছি লওক। সহজ অনুশীলনৰ বাবে Easy, মধ্যমৰ বাবে Medium, বা প্ৰত্যাহ্বানৰ বাবে Hard টিপক।",
+        "mzo": "A harsat zawng thlang rawh. Awlsam tak tan Easy, a chawp tan Medium, a harsat tak tan Hard hmet rawh.",
+        "kha": "Jied ia ka jingeh. Kynton Easy na bynta ka jingialeh jem, Medium na bynta ka jingmlien, lane Hard.",
+        "next_step": "Tap Easy, Medium, or Hard."
+    },
+    "memory_match": {
+        "en": "Memory Match Game: Gently tap two cards to flip them and match pairs of Assam flowers, tea leaves, or family faces.",
+        "hi": "मेमोरी मैच खेल: ताश के दो पत्तों को पलटकर असम के फूलों, चाय की पत्तियों या परिवार की तस्वीरों की जोड़ी मिलाएं।",
+        "as": "মেম'ৰী মেচ খেল: অসমৰ ফুল, চাহ পাত বা পৰিয়ালৰ ছবিৰ জোৰা মিলাবলৈ দুখন কাৰ্ড উলটাই টিপক।",
+        "mzo": "Memory Match Infiamna: Card pahnih hmet la, Assam pangpar, thingpui hnah, a nih loh chuan chhungte hmai inhnim zawn chhuah tum rawh.",
+        "kha": "Memory Match: Kynton ia ar ki card ban wad ia ki synrop tiew Assam, sla cha, lane dur ki kur ki kha.",
+        "next_step": "Tap two cards to find a pair."
+    },
+    "number_sequence": {
+        "en": "Number Sequence Game: Listen carefully to the numbers spoken to you, then repeat them by tapping the number keys.",
+        "hi": "नंबर अनुक्रम खेल: बोले गए नंबरों को ध्यान से सुनें, फिर नंबर बटन दबाकर उन्हें दोहराएं।",
+        "as": "নম্বৰ অনুক্ৰম খেল: কোৱা নম্বৰবোৰ মনোযোগেৰে শুনক, তাৰ পিছত নম্বৰ বুটাম টিপি সেইবোৰ পুনৰাবৃত্তি কৰক।",
+        "mzo": "Number Sequence Infiamna: Nomba an sawite chu uluk takin ngaithla la, nomba hmehna hmangin sawi nawn leh rawh.",
+        "kha": "Number Sequence: Sngap bha ia ki dak jingkhein ba la kren, nangta pynkynmaw da kaba kynton ia ki button.",
+        "next_step": "Listen to spoken numbers and tap keys."
+    },
+    "word_recall": {
+        "en": "Word Recall Game: Read or listen to traditional heritage words, then select the matching cultural meaning.",
+        "hi": "शब्द स्मरण खेल: पारंपरिक शब्दों को पढ़ें या सुनें, फिर उनके सही सांस्कृतिक अर्थ का चयन करें।",
+        "as": "শব্দ স্মৰণ খেল: পৰম্পৰাগত শব্দবোৰ পঢ়ক বা শুনক, তাৰ পিছত শুদ্ধ সাংস্কৃতিক অৰ্থ বাছি লওক।",
+        "mzo": "Word Recall Infiamna: Tualchhung tawng thu awmzia te ngaithla la, a awmzia inhnim thlang rawh.",
+        "kha": "Word Recall: Pule lane sngap ia ki kyntien thymmai, nangta jied ia ka jingmut kaba dei.",
+        "next_step": "Select the correct traditional word meaning."
+    },
+    "picture_association": {
+        "en": "Picture Association Game: Look at the traditional picture, then tap the symbol or story that matches its meaning.",
+        "hi": "चित्र संगति खेल: पारंपरिक चित्र देखें, फिर उसके अर्थ से मेल खाने वाले प्रतीक पर टैप करें।",
+        "as": "ছবি সংগতি খেল: পৰম্পৰাগত ছবিখন চাওক, তাৰ পিছত ইয়াৰ অৰ্থৰ সৈতে মিলা প্ৰতীকটো টিপক।",
+        "mzo": "Picture Association Infiamna: Lem awm chu en la, a awmzia inhnim mil tak hmet rawh.",
+        "kha": "Picture Association: Peit ia ka dur, nangta kynton ia u dak lane ka jingthoh kaba iadei.",
+        "next_step": "Tap the matching picture story."
+    },
+    "caregiver_dashboard": {
+        "en": "Caregiver Monitoring Dashboard: Review daily cognitive performance scores, domain breakdowns, and alert logs.",
+        "hi": "केयरगिवर मॉनिटरिंग डैशबोर्ड: दैनिक संज्ञानात्मक स्कोर, गेम ब्रेकडाउन और अलर्ट लॉग देखें।",
+        "as": "তত্ত্বাৱধানকাৰী নিৰীক্ষণ ডেচব'ৰ্ড: দৈনিক স্ক'ৰ, খেলৰ ভাগ আৰু সতৰ্কবাৰ্তা চাওক।",
+        "mzo": "Enkawltu Enzuina Dashboard: Ni tin hriatrengna mark, infiamna thliah hrang leh hriattirnate en rawh.",
+        "kha": "Caregiver Dashboard: Peit ia ki jingtynjuh jong ka sngi, ki rukom ialeh bad ki jingma.",
+        "next_step": "Review cognitive domain charts and alert notes."
     },
     "game_results": {
         "en": "Fantastic effort! Your practice score today is {cps}. Take a short rest and drink some water.",
@@ -81,7 +130,7 @@ BLUETOOTH_PAIRING_PROMPTS = {
 
 # Supported Voice Intent Keywords
 INTENTS = {
-    "START_GAME": ["game", "play", "start", "खेल", "गेम", "শুরু", "খেল", "infiamna", "tan", "jingialeh", "sdang"],
+    "START_GAME": ["game", "play", "start", "खेल", "गेम", "শুরু", "খেল", "infiamna", "tan", "jingialeh", "sdang", "memory", "number", "word", "picture"],
     "CHECK_SCORE": ["score", "progress", "how am i doing", "स्कोर", "प्रदर्शन", "স্ক'ৰ", "হিসাপ", "mark", "hmuh", "jingtynjuh"],
     "CHECK_REMINDERS": ["medicine", "pill", "reminder", "water", "दवा", "पानी", "ঔষধ", "পানী", "damdawi", "tui", "dawai", "um"],
     "CALL_CAREGIVER": ["help", "caregiver", "call", "doctor", "मदद", "सहायता", "সহায়", "ডাক্তৰ", "tanpui", "bual", "iarap", "doctor"],
@@ -122,7 +171,6 @@ def translate_text(text: str, source_lang: str, target_lang: str) -> Dict[str, s
                     "translated_text": lang_dict.get(target_clean, text),
                 }
 
-    # Default fallback translation wrapper
     return {
         "source_lang": source_lang,
         "target_lang": target_clean,
@@ -195,11 +243,11 @@ def process_voice_query(patient_id: str, spoken_phrase: str, forced_lang: Option
 
     if intent == "START_GAME":
         responses = {
-            "en": "Let's start a new game! Choose your favorite game to begin.",
-            "hi": "चलिए एक नया गेम शुरू करते हैं! अपनी पसंद का खेल चुनें।",
-            "as": "ব'লক এটা নতুন খেল আৰম্ভ কৰোঁ! খেলিবলৈ মনপছন্দ খেল বাছি লওক।",
-            "mzo": "Infiamna thar i tan ang u! Bullian tan turin i ngainat ber thlang rawh.",
-            "kha": "Kha ngin sdang ia ka jingialeh thymmai! Jied ia ka jingialeh ba phi sngewtynnad.",
+            "en": "Let's start a new game! Choose Memory Match, Number Sequence, Word Recall, or Picture Association.",
+            "hi": "चलिए एक नया गेम शुरू करते हैं! मेमोरी मैच, नंबर सीक्वेंस, वर्ड रिकॉल या पिक्चर एसोसिएशन चुनें।",
+            "as": "ব'লক এটা নতুন খেল আৰম্ভ কৰোঁ! মেম'ৰী মেচ, নম্বৰ অনুক্ৰম, শব্দ স্মৰণ বা ছবি সংগতি বাছি লওক।",
+            "mzo": "Infiamna thar i tan ang u! Memory Match, Number Sequence, Word Recall, a nih loh chuan Picture Association thlang rawh.",
+            "kha": "Kha ngin sdang ia ka jingialeh thymmai! Jied Memory Match, Number Sequence, Word Recall, lane Picture Association.",
         }
         action = {"route": "/games", "type": "navigate"}
 
@@ -235,11 +283,11 @@ def process_voice_query(patient_id: str, spoken_phrase: str, forced_lang: Option
 
     elif intent == "GREETING":
         responses = {
-            "en": "Hello! I am your Smriti assistant. What would you like to do today?",
-            "hi": "नमस्ते! मैं आपकी स्मृति मदद हूँ। आज आप क्या करना चाहेंगे?",
-            "as": "নমস্কাৰ! মই আপোনাৰ স্মৃতি সহায়ক। আজি আপুনি কি কৰিব বিচাৰিব?",
-            "mzo": "Chibai! Smriti tanpuitu ka ni e. Vawiin hian eng nge tih i duh ang?",
-            "kha": "Khublei! Nga long u nongiarap Smriti. Kiei ba phi kwah ban leh mynta?",
+            "en": "Hello! I am your Smriti assistant. Which game would you like to play today?",
+            "hi": "नमस्ते! मैं आपकी स्मृति मदद हूँ। आज आप कौन सा खेल खेलना चाहेंगे?",
+            "as": "নমস্কাৰ! মই আপোনাৰ স্মৃতি সহায়ক। আজি আপুনি কোনটো খেল খেলিব বিচাৰিব?",
+            "mzo": "Chibai! Smriti tanpuitu ka ni e. Vawiin hian eng infiamna nge i khelh duh ang?",
+            "kha": "Khublei! Nga long u nongiarap Smriti. Kaei ka jingialeh ba phi kwah ban ialeh mynta?",
         }
         action = {"route": "/home", "type": "welcome"}
 
