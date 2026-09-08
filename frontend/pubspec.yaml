@@ -1,0 +1,32 @@
+name: smriti_app
+description: "Smriti (স্মৃতি) - AI-Powered, Multilingual, Offline-First Cognitive Engagement & Memory Assistance Platform for Elderly Dementia Care."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.18.1
+  http: ^1.1.0
+  flutter_tts: ^3.8.3
+  speech_to_text: ^6.3.0
+  shared_preferences: ^2.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/lang/en.json
+    - assets/lang/hi.json
+    - assets/lang/as.json
+    - assets/lang/mzo.json
+    - assets/lang/kha.json
