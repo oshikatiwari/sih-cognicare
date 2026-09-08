@@ -13,3 +13,12 @@ dashboard/.env
 *.log
 .env
 .vscode/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local SQLite database
+*.db
+*.sqlite
+*.sqlite3

@@ -1,29 +1,13 @@
-"""
-app/routers/analysis.py
-------------------------
-FastAPI router for the AI Analysis Module.
-
-Exposes:
-  POST /analysis/cps                 -> calculate + store a CPS score
-  GET  /analysis/trend/{patient_id}  -> return score history + alert flag
-
-NOTE FOR INTEGRATION:
-  - Swap `FAKE_DB` for real SQLAlchemy queries against Meghna's
-    `CognitiveScores` table once her schema/session dependency is ready.
-    The function signatures and response shapes are designed to not
-    need to change when you do that swap.
-  - `session_id` is expected to already exist (created by Praveen's
-    POST /game-sessions call) before this endpoint is hit.
-"""
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List
-from datetime import datetime
 
 from backend.app.services.cps_calculator import SessionMetrics, calculate_cps
 from backend.app.services.anomaly_detector import check_trend
-from backend.app.services.store import FAKE_DB  # shared with seed_demo_data.py -- replace with real DB later
+
+from backend.app.db.session import SessionLocal
+from backend.app.models.cognitive_score import CognitiveScore
+
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -32,7 +16,7 @@ class CPSRequest(BaseModel):
     session_id: str
     patient_id: str
     accuracy: float = Field(..., ge=0, le=100)
-    response_time: float = Field(..., ge=0)  # ms, per roadmap Section 8 spec -- confirm unit w/ Praveen
+    response_time: float = Field(..., ge=0)
     completion_rate: float = Field(..., ge=0, le=100)
     attempts: int = 0
     errors: int = 0
@@ -54,50 +38,116 @@ class TrendResponse(BaseModel):
 
 @router.post("/cps", response_model=CPSResponse)
 def calculate_and_store_cps(payload: CPSRequest):
-    """Calculates CPS for one session, stores it, returns score + tier."""
-    history = FAKE_DB.get(payload.patient_id, [])
-    recent_accuracies = [h["accuracy"] for h in history[-5:]]  # last 5 sessions
+    """Calculate CPS and store it in the database."""
 
-    metrics = SessionMetrics(
-        accuracy=payload.accuracy,
-        response_time=payload.response_time,
-        completion_rate=payload.completion_rate,
-        attempts=payload.attempts,
-        errors=payload.errors,
-        hints_used=payload.hints_used,
-        is_memory_game=payload.is_memory_game,
-        memory_specific_accuracy=payload.memory_specific_accuracy,
-    )
+    db = SessionLocal()
 
-    result = calculate_cps(metrics, recent_accuracies=recent_accuracies)
+    try:
+        # Get previous scores for consistency calculation
+        previous_scores = (
+            db.query(CognitiveScore)
+            .filter(CognitiveScore.patient_id == payload.patient_id)
+            .order_by(CognitiveScore.created_at.desc())
+            .limit(5)
+            .all()
+        )
 
-    # store for trend/history lookups (replace with real DB INSERT)
-    FAKE_DB.setdefault(payload.patient_id, []).append({
-        "session_id": payload.session_id,
-        "cps": result["cps"],
-        "accuracy": payload.accuracy,
-        "timestamp": datetime.now().isoformat(),
-    })
+        # Reverse so they are chronological
+        previous_scores.reverse()
 
-    return CPSResponse(
-        cps=result["cps"],
-        difficulty_tier=result["difficulty_tier"],
-        sub_scores=result["sub_scores"],
-    )
+        recent_accuracies = [
+            score.accuracy
+            for score in previous_scores
+        ]
+
+        # Calculate CPS using the existing AI logic
+        metrics = SessionMetrics(
+            accuracy=payload.accuracy,
+            response_time=payload.response_time,
+            completion_rate=payload.completion_rate,
+            attempts=payload.attempts,
+            errors=payload.errors,
+            hints_used=payload.hints_used,
+            is_memory_game=payload.is_memory_game,
+            memory_specific_accuracy=payload.memory_specific_accuracy,
+        )
+
+        result = calculate_cps(
+            metrics,
+            recent_accuracies=recent_accuracies,
+        )
+
+        # Save the cognitive score
+        cognitive_score = CognitiveScore(
+            session_id=payload.session_id,
+            patient_id=payload.patient_id,
+            cps=result["cps"],
+            accuracy=payload.accuracy,
+            difficulty_tier=result["difficulty_tier"],
+        )
+
+        db.add(cognitive_score)
+        db.commit()
+        db.refresh(cognitive_score)
+
+        return CPSResponse(
+            cps=result["cps"],
+            difficulty_tier=result["difficulty_tier"],
+            sub_scores=result["sub_scores"],
+        )
+
+    finally:
+        db.close()
 
 
 @router.get("/trend/{patient_id}", response_model=TrendResponse)
 def get_trend(patient_id: str):
-    """Returns CPS history for a patient plus an alert if a significant drop occurred."""
-    history = FAKE_DB.get(patient_id)
-    if not history:
-        raise HTTPException(status_code=404, detail="No score history for this patient")
+    """Return CPS history and anomaly alerts for a patient."""
 
-    scores = [{"session_id": h["session_id"], "cps": h["cps"], "timestamp": h["timestamp"]}
-              for h in history]
-    cps_values = [h["cps"] for h in history]
+    db = SessionLocal()
 
-    anomaly = check_trend(cps_values)
-    alert_message = anomaly["message"] if anomaly else None
+    try:
+        history = (
+            db.query(CognitiveScore)
+            .filter(CognitiveScore.patient_id == patient_id)
+            .order_by(CognitiveScore.created_at.asc())
+            .all()
+        )
 
-    return TrendResponse(scores=scores, alert=alert_message)
+        if not history:
+            raise HTTPException(
+                status_code=404,
+                detail="No score history for this patient",
+            )
+
+        scores = [
+            {
+                "session_id": score.session_id,
+                "cps": score.cps,
+                "timestamp": score.created_at.isoformat()
+                if score.created_at
+                else None,
+            }
+            for score in history
+        ]
+
+        cps_values = [
+            score.cps
+            for score in history
+        ]
+
+        anomaly = check_trend(cps_values)
+
+        alert_message = (
+            anomaly["message"]
+            if anomaly
+            else None
+        )
+
+        return TrendResponse(
+            scores=scores,
+            alert=alert_message,
+        )
+
+    finally:
+        db.close()

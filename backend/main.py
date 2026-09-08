@@ -1,46 +1,54 @@
-"""
-main.py
--------
-Standalone runnable entrypoint for the AI Analysis Module.
-Auto-seeds demo data on startup so /analysis/trend/{patient_id}
-returns real data immediately.
-
-IMPORTANT: run this from the REPO ROOT (the sih-cognicare folder),
-not from inside backend/ -- the imports are structured as a package
-(backend.app.services.*, backend.app.routers.*) so Python needs to
-see the repo root to resolve them.
-
-Run (from repo root):
-    pip install fastapi uvicorn --break-system-packages
-    uvicorn backend.main:app --reload
-
-Then open http://localhost:8000/docs, or try:
-    curl http://localhost:8000/analysis/trend/demo-patient-01
-    curl http://localhost:8000/analysis/trend/demo-patient-12   # rigged to show an alert
-"""
-
 from fastapi import FastAPI
-from backend.app.routers.analysis import router
+
+from backend.app.routers.analysis import router as analysis_router
+from backend.app.routers.patients import router as patients_router
+from backend.app.routers.game_sessions import router as game_sessions_router
+from backend.app.routers.game_results import router as game_results_router
+from backend.app.routers.voice_interactions import router as voice_interactions_router
+from backend.app.routers.reminders import router as reminders_router
+from backend.app.routers.sync import router as sync_router
+
 from backend.app.services.seed_demo_data import seed
 
-app = FastAPI(title="Cognitive Care - AI Analysis Module")
-app.include_router(router)
+
+app = FastAPI(
+    title="Cognitive Care Backend",
+)
+
+
+# Routers
+app.include_router(analysis_router)
+app.include_router(patients_router)
+app.include_router(game_sessions_router)
+app.include_router(game_results_router)
+app.include_router(voice_interactions_router)
+app.include_router(reminders_router)
+app.include_router(sync_router)
 
 
 @app.on_event("startup")
 def startup_seed():
     seed(num_patients=12, sessions_per_patient=10)
+
     print("Demo data seeded: demo-patient-01 through demo-patient-12")
-    print("demo-patient-12 is rigged with a sharp late drop to demo the anomaly alert.")
 
 
 @app.get("/")
 def root():
     return {
         "status": "ok",
-        "try": [
-            "GET /analysis/trend/demo-patient-01",
-            "GET /analysis/trend/demo-patient-12  (shows the anomaly alert)",
-            "POST /analysis/cps  (see /docs for body schema)",
+        "message": "Cognitive Care Backend is running.",
+        "available_endpoints": [
+            "POST /patients/",
+            "GET /patients/{patient_id}",
+            "POST /game-sessions/",
+            "GET /game-sessions/{session_id}",
+            "POST /game-results/",
+            "POST /voice-interactions/",
+            "POST /reminders/",
+            "PUT /reminders/{reminder_id}/complete",
+            "POST /sync/",
+            "POST /analysis/cps",
+            "GET /analysis/trend/{patient_id}",
         ],
     }
