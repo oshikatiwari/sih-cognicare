@@ -3,26 +3,6 @@
 on: [push, workflow_dispatch]
 
 jobs:
-  build-gps-tracking:
-    name: Build GPS Tracking Native APK
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-      - uses: gradle/actions/setup-gradle@v3
-      - run: |
-          cd gps_tracking
-          if [ ! -f gradlew ]; then gradle wrapper; fi
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gps-tracking-app-debug
-          path: gps_tracking/app/build/outputs/apk/debug/app-debug.apk
-
   build-flutter-frontend:
     name: Build Smriti Flutter App APK
     runs-on: ubuntu-latest
@@ -36,8 +16,9 @@ jobs:
         with:
           flutter-version: '3.22.x'
           channel: 'stable'
-      - run: |
-          cd frontend
+      - name: Generate Android Platform & Build APK
+        working-directory: frontend
+        run: |
           flutter create . --platforms=android
           flutter pub get
           flutter build apk --debug
@@ -45,3 +26,24 @@ jobs:
         with:
           name: smriti-flutter-app-debug
           path: frontend/build/app/outputs/flutter-apk/app-debug.apk
+
+  build-gps-tracking:
+    name: Build GPS Tracking Native APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+      - name: Build APK with Gradle
+        working-directory: gps_tracking
+        run: |
+          if [ ! -f gradlew ]; then gradle wrapper; fi
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gps-tracking-app-debug
+          path: gps_tracking/app/build/outputs/apk/debug/app-debug.apk
