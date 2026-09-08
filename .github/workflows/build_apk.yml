@@ -16,9 +16,15 @@ jobs:
         with:
           flutter-version: '3.22.x'
           channel: 'stable'
-      - name: Build Flutter APK
-        working-directory: frontend
+      - name: Generate Fresh Android Files & Build APK
         run: |
+          rm -rf frontend/android
+          flutter create temp_app --org com.example
+          cp -r temp_app/android frontend/
+          rm -rf temp_app
+          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' frontend/android/app/build.gradle || true
+          sed -i 's/minSdkVersion 16/minSdkVersion 21/g' frontend/android/app/build.gradle || true
+          cd frontend
           flutter pub get
           flutter build apk --debug
       - uses: actions/upload-artifact@v4
