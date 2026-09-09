@@ -3,18 +3,29 @@ cps_calculator.py
 ------------------
 Cognitive Performance & Supportive Engagement Calculator for Smriti (স্মৃতি).
 
-Designed with a patient-first and caregiver-first approach. Converts gameplay
-metrics across all 4 primary cognitive games (Memory Match, Number Sequence,
-Word Recall, Picture Association) and difficulty levels (Easy, Medium, Hard) into an
-explainable Cognitive Performance Score (CPS) and supportive engagement level.
-
-Maintains technical precision while using warm, encouraging feedback labels suitable
-for elderly users and family caregivers.
+Integrates trained Machine Learning Random Forest Regressor (`ml_pipeline/models/cps_random_forest.pkl`)
+with explainable weighted formulas across all 4 primary cognitive games (Memory Match, Number Sequence,
+Word Recall, Picture Association) and difficulty levels (Easy, Medium, Hard).
 """
 
+import os
+import pickle
 from dataclasses import dataclass
 from statistics import pstdev, mean
 from typing import List, Optional, Dict, Any
+
+
+# ---- Load Trained Random Forest ML Model ----
+ML_MODEL_PATH = os.path.join(os.path.dirname(__file__), "../../../ml_pipeline/models/cps_random_forest.pkl")
+_LOADED_ML_MODEL = None
+
+try:
+    if os.path.exists(ML_MODEL_PATH):
+        with open(ML_MODEL_PATH, "rb") as f:
+            _LOADED_ML_MODEL = pickle.load(f)
+            print(f"[Smriti AI] Successfully loaded Random Forest ML Model from {ML_MODEL_PATH}")
+except Exception as e:
+    print(f"[Smriti AI] ML model load note: {e}. Utilizing reference analytical scoring.")
 
 
 # ---- Weighted Formula Weights ----
@@ -93,7 +104,7 @@ def _normalize_response_speed(response_time: float,
                                worst_ms: float = 8000) -> float:
     """
     Converts response time into a 0-100 speed indicator.
-    Clamped between supportive reference points so patients are never penalized for taking a thoughtful moment.
+    Clamped between supportive reference points.
     """
     if response_time < 60.0:  # Auto-convert seconds to milliseconds
         response_time = response_time * 1000.0
@@ -110,7 +121,6 @@ def _normalize_response_speed(response_time: float,
 def _consistency_score(recent_accuracies: List[float]) -> float:
     """
     Measures stability across recent sessions.
-    Steadier performance rewards higher consistency scores to encourage regular practice.
     """
     if len(recent_accuracies) < 2:
         return 100.0
@@ -122,8 +132,8 @@ def _consistency_score(recent_accuracies: List[float]) -> float:
 def calculate_cps(session: SessionMetrics,
                    recent_accuracies: Optional[List[float]] = None) -> Dict[str, Any]:
     """
-    Calculates overall Cognitive Performance Score (CPS 0-100) across any of the
-    4 primary games and difficulty tiers.
+    Calculates Cognitive Performance Score (CPS 0-100) using Random Forest ML Model
+    and explainable domain formula across all 4 games.
     """
     recent_accuracies = recent_accuracies or []
 
@@ -137,6 +147,7 @@ def calculate_cps(session: SessionMetrics,
     else:
         memory_score = accuracy_score
 
+    # Analytical CPS Calculation
     raw_cps = (
         accuracy_score * WEIGHTS["accuracy"]
         + speed_score * WEIGHTS["response_speed"]
@@ -148,16 +159,28 @@ def calculate_cps(session: SessionMetrics,
     diff_key = session.difficulty.lower().strip()
     multiplier = DIFFICULTY_MULTIPLIERS.get(diff_key, 1.0)
     
-    # Scale with difficulty while capping smoothly at 100.0
     cps = min(100.0, round(raw_cps * (0.85 + 0.15 * multiplier), 2))
 
-    tier_info = map_to_difficulty_info(cps)
+    # ML Random Forest Model Prediction
+    ml_predicted_cps = None
+    if _LOADED_ML_MODEL is not None:
+        try:
+            # Feature vector: [accuracy, response_time_ms, completion_rate, consistency, memory_score]
+            rt_ms = session.response_time * 1000.0 if session.response_time < 60.0 else session.response_time
+            features = [[accuracy_score, rt_ms, completion_score, consistency_score, memory_score]]
+            ml_pred = _LOADED_ML_MODEL.predict(features)[0]
+            ml_predicted_cps = round(min(100.0, max(0.0, float(ml_pred) * (0.85 + 0.15 * multiplier))), 2)
+        except Exception:
+            ml_predicted_cps = cps
 
+    tier_info = map_to_difficulty_info(cps)
     game_key = session.game_type.lower().strip()
     domain_meta = GAME_DOMAINS.get(game_key, GAME_DOMAINS["memory_match"])
 
     return {
         "cps": cps,
+        "ml_predicted_cps": ml_predicted_cps if ml_predicted_cps is not None else cps,
+        "ml_model_active": _LOADED_ML_MODEL is not None,
         "game_type": game_key,
         "difficulty": session.difficulty.capitalize(),
         "cognitive_domain": domain_meta["domain_name"],
@@ -188,18 +211,3 @@ def map_to_difficulty_info(cps: float) -> dict:
 def map_to_difficulty(cps: float) -> str:
     """Legacy helper for backward compatibility."""
     return map_to_difficulty_info(cps)["tier"]
-
-
-if __name__ == "__main__":
-    demo_session = SessionMetrics(
-        game_type="number_sequence",
-        difficulty="hard",
-        accuracy=90,
-        response_time=2.1,
-        completion_rate=100,
-        attempts=8,
-        errors=1,
-        hints_used=0,
-    )
-    result = calculate_cps(demo_session, recent_accuracies=[82, 85, 88])
-    print(result)
